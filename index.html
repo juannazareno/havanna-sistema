@@ -575,7 +575,8 @@ function calc(c,snap){
   if(r.gastos)r.medios['Gastos de caja']=r.gastos;if(r.roturas)r.medios['Vales por roturas']=r.roturas;if(r.anticipos)r.medios['Vales de empleados']=r.anticipos;if(r.vouchers)r.medios['Vouchers']=r.vouchers;
   r.total=r.efectivo+r.bancosBruto+r.gastos+r.roturas+r.anticipos+r.vouchers;
   r.conc=null;r.sistema=null;
-  if(c.conc&&c.conc.vals&&c.estado==='confirmado'){r.conc=concLineas(c,r,snap);r.sistema=r.conc.reduce((a,x)=>a+x.sis,0);r.dif=r.conc.reduce((a,x)=>a+x.dif,0)}
+  if(c.conc&&c.conc.total!=null&&c.conc.total!==''&&c.estado==='confirmado'){r.sistema=n(c.conc.total);r.dif=concRendido(c,r,snap)-r.sistema}
+  else if(c.conc&&c.conc.vals&&c.estado==='confirmado'){r.conc=concLineas(c,r,snap);r.sistema=r.conc.reduce((a,x)=>a+x.sis,0);r.dif=r.conc.reduce((a,x)=>a+x.dif,0)}
   else{const vs=c.conf&&c.conf.ventaSistema;if(vs!=null&&vs!==''&&n(vs)>0){const inc=false;r.sistema=n(vs);r.dif=r.total+(inc?r.fondo:0)-n(vs)}}
   return r;
 }
@@ -591,6 +592,8 @@ function concLineas(c,r,snap){
   add('vouchers','Vouchers',r.vouchers);
   return L;
 }
+/* total que confirmó Administración (efectivo con gastos y vales + bancos + otros medios + vouchers) */
+function concRendido(c,r,snap){return concLineas(Object.assign({},c,{conc:null}),r,snap).reduce((a,l)=>a+l.ren,0)}
 const ventaCierre=c=>{const r=calc(c);return r.total};
 const comensales=c=>n(c.conf&&c.conf.comensales);
 
@@ -3339,7 +3342,7 @@ async function setMes(m){SEL.mes=m;$('#app').querySelector('.wrap').innerHTML='<
 
 /* cierres */
 let ADMF='pend';
-const concEstado=c=>c.conc&&c.estado==='confirmado'?(Math.abs(calc(c).dif)<1&&!calc(c).conc.some(x=>Math.abs(x.dif)>=1)?'ok':'dif'):'pend';
+const concEstado=c=>{if(!(c.conc&&c.estado==='confirmado'))return'pend';const r=calc(c);return Math.abs(r.dif)<1&&!(r.conc||[]).some(x=>Math.abs(x.dif)>=1)?'ok':'dif'};
 function concPill(c){const e=concEstado(c);return e==='ok'?'<span class="pill p-ok">Conciliado</span>':e==='dif'?'<span class="pill p-w">Conciliado con diferencias</span>':'<span class="pill p-n">Sin conciliar</span>'}
 function admCierres(){
   const all=Object.values(D.cie).flat();
@@ -3363,39 +3366,24 @@ function admCierres(){
   `;
 }
 let CONCV='pend',CONC=null;
-function concAbrir(id){const c=Object.values(D.cie).flat().find(x=>x.id===id);if(!c||c.estado!=='confirmado')return toast('Primero hay que confirmar el cierre (OK de Administración). Recién ahí se concilia.',true);CONC={id,vals:clone((c.conc&&c.conc.vals)||{})};concRender()}
-function concObj(){const c=Object.values(D.cie).flat().find(x=>x.id===CONC.id);const x=clone(c);x.conc={vals:CONC.vals};return x}
-function concOrig(x){if(!x.original)return null;const snap=(x.conf&&x.conf.snap)||snapActual();const o=Object.assign(clone(x.original),{conc:x.conc,estado:'confirmado'});const ro=calc(o,snap);const m={};concLineas(o,ro,snap).forEach(l=>m[l.key]=l.ren);return m}
-function concTabla(){
-  const x=concObj(),r=calc(x),orig=concOrig(x);
-  const rows=r.conc.map(l=>`<tr><td><b>${esc(l.nombre)}</b>${l.nota?`<div class="xs mut">${esc(l.nota)}</div>`:''}</td><td class="r num"><b>${money(l.ren)}</b>${orig&&Math.abs(n(orig[l.key])-l.ren)>=1?`<div class="xs mut">el cajero cargó ${money(orig[l.key])}</div>`:''}</td><td class="r"><input class="in money" style="width:140px;margin-left:auto;display:block" inputmode="decimal" placeholder="$ 0" value="${l.has?esc(CONC.vals[l.key]):''}" oninput="CONC.vals['${l.key}']=this.value.trim()===''?'':parseNum(this.value);concUpd()"></td><td class="r num b ${l.dif<=-1?'dn':l.dif>=1?'up':''}">${Math.abs(l.dif)<1?'<span class="mut">$ 0</span>':money(l.dif)+(l.dif<0?' faltante':' sobrante')}</td></tr>`).join('');
-  return{r,rows};
-}
-function concResumen(r){
-  const difs=r.conc.filter(l=>Math.abs(l.dif)>=1);const fin=r.dif;
-  let h=`<div class="ln"><span>Total confirmado por Administración</span><b>${money(r.conc.reduce((a,l)=>a+l.ren,0))}</b></div><div class="ln"><span>Total según sistema Havanna</span><b>${money(r.sistema)}</b></div>`;
-  difs.forEach(l=>h+=`<div class="ln"><span>${esc(l.nombre)}</span><span class="${l.dif<0?'dn':'up'}">${money(l.dif)} ${l.dif<0?'faltante':'sobrante'}</span></div>`);
-  h+=`<div class="ln big"><span>Conciliación final</span><span class="${fin<=-1?'dn':fin>=1?'up':''}">${money(fin)} ${fin<=-1?'(faltante)':fin>=1?'(sobrante)':''}</span></div>`;
-  if(difs.length&&Math.abs(fin)<1)h+=`<div class="xs" style="color:#dcd9cf;margin-top:6px">El turno cierra en cero, pero hay diferencias entre medios de pago (por ejemplo, se cobró con tarjeta algo que se cargó como efectivo).</div>`;
-  return h;
-}
-function concRender(){
-  const c=Object.values(D.cie).flat().find(x=>x.id===CONC.id);const{r,rows}=concTabla();
-  modal(`Conciliación · ${suc(c.suc).nombre} · ${c.turno} · ${fFecha(c.fecha)}`,`<p class="sm mut" style="margin-top:0">Cajero ${esc(c.cajero)} · Planilla N° ${esc(c.nro)}. Se compara lo que confirmó Administración (con sus correcciones) contra lo que informa el sistema Havanna. Si un medio no tuvo movimiento, dejalo vacío.</p>
-  <div class="card" style="padding:6px 12px"><div class="tw"><table class="t"><thead><tr><th>Medio de pago</th><th class="r">Confirmado por Administración</th><th class="r">Sistema Havanna</th><th class="r">Diferencia</th></tr></thead><tbody id="conc-rows">${rows}</tbody></table></div></div>
-  <div class="totbox" id="conc-res">${concResumen(r)}</div>
+function concAbrir(id){const c=Object.values(D.cie).flat().find(x=>x.id===id);if(!c||c.estado!=='confirmado')return toast('Primero hay que confirmar el cierre (OK de Administración). Recién ahí se concilia.',true);CONC={id,total:c.conc&&c.conc.total!=null?c.conc.total:''};concRender()}
+function concCalc(){const c=Object.values(D.cie).flat().find(x=>x.id===CONC.id);const r=calc(c);const snap=(c.conf&&c.conf.snap)||snapActual();const ren=concRendido(c,r,snap);const has=CONC.total!==''&&CONC.total!=null;return{c,ren,sis:has?n(CONC.total):null,dif:has?ren-n(CONC.total):null}}
+function concResumen(){const x=concCalc();
+  let h=`<div class="ln"><span>Total confirmado por Administración</span><b>${money(x.ren)}</b></div><div class="ln"><span>Total según sistema Havanna</span><b>${x.sis==null?'—':money(x.sis)}</b></div>`;
+  if(x.dif!=null)h+=`<div class="ln big"><span>Diferencia</span><span class="${x.dif<=-1?'dn':x.dif>=1?'up':''}">${Math.abs(x.dif)<1?'$ 0':money(x.dif)+(x.dif<0?' (faltante)':' (sobrante)')}</span></div>`;
+  return h}
+function concRender(){const x=concCalc(),c=x.c;
+  modal(`Conciliación · ${suc(c.suc).nombre} · ${c.turno} · ${fFecha(c.fecha)}`,`<p class="sm mut" style="margin-top:0">Cajero ${esc(c.cajero)} · Planilla N° ${esc(c.nro)}. Se compara el total que confirmó Administración (con sus correcciones) contra la venta total del turno en el sistema Havanna.</p>
+  <div class="fld" style="max-width:320px"><label class="f">Venta total del turno en el sistema Havanna</label><input class="in money" id="conc-total" inputmode="decimal" placeholder="$ 0" value="${x.sis==null?'':esc(CONC.total)}" oninput="CONC.total=this.value.trim()===''?'':parseNum(this.value);$('#conc-res').innerHTML=concResumen()"></div>
+  <div class="totbox" id="conc-res">${concResumen()}</div>
   <div class="row" style="margin-top:14px">${c.conc?`<button class="btn sm rd" onclick="concBorrar()">Borrar conciliación</button>`:''}<span class="sp"></span><button class="btn o" onclick="closeModal()">Cancelar</button><button class="btn g" onclick="concGuardar()">Guardar conciliación</button></div>`);
-}
-function concUpd(){const{r}=concTabla();const x=concObj(),rr=calc(x);
-  document.querySelectorAll('#conc-rows tr').forEach((tr,i)=>{const l=rr.conc[i];const td=tr.children[3];td.className='r num b '+(l.dif<=-1?'dn':l.dif>=1?'up':'');td.innerHTML=Math.abs(l.dif)<1?'<span class="mut">$ 0</span>':money(l.dif)+(l.dif<0?' faltante':' sobrante')});
-  $('#conc-res').innerHTML=concResumen(rr)}
+  setTimeout(()=>{const e=$('#conc-total');if(e)e.focus()},50)}
 async function concGuardar(){
   const c=Object.values(D.cie).flat().find(x=>x.id===CONC.id);
   if(!c||c.estado!=='confirmado'){closeModal();CONC=null;render();return toast('El cierre no está confirmado. Confirmalo primero y después conciliá.',true)}
-  if(!Object.values(CONC.vals).some(v=>v!==''&&v!=null))return toast('Cargá al menos un medio del sistema Havanna',true);
-  c.conc={vals:CONC.vals,por:'Administración',ts:new Date().toISOString()};
-  await safe(async()=>{await DB.set('cie:'+mesDe(c.fecha)+':'+c.id,c);const r=calc(c);const difs=r.conc.filter(l=>Math.abs(l.dif)>=1);
-    if(difs.length)await enviarMsg('enc:'+c.suc,`Conciliación del cierre ${fFecha(c.fecha)} ${c.turno} (${c.cajero}): ${difs.map(l=>l.nombre+' '+money(l.dif)).join(', ')}. Diferencia final ${money(r.dif)}.`)},'Conciliación guardada');
+  if(CONC.total===''||CONC.total==null||!(n(CONC.total)>0))return toast('Cargá la venta total del sistema Havanna',true);
+  c.conc={total:n(CONC.total),por:'Administración',ts:new Date().toISOString()};
+  await safe(()=>DB.set('cie:'+mesDe(c.fecha)+':'+c.id,c),'Conciliación guardada');
   closeModal();CONC=null;render();
 }
 async function concBorrar(){if(!confirm('¿Borrar la conciliación de este cierre?'))return;const c=Object.values(D.cie).flat().find(x=>x.id===CONC.id);delete c.conc;await safe(()=>DB.set('cie:'+mesDe(c.fecha)+':'+c.id,c),'Conciliación borrada');closeModal();CONC=null;render()}
