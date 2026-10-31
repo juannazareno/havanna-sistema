@@ -386,7 +386,15 @@ const CAT_CAJA=['Insumos y descartables','Limpieza','Mercadería','Mantenimiento
 const BILL=[20000,10000,2000,1000,500,200,100,50,20,10];
 
 function toast(msg,err){const t=$('#toast');t.textContent=msg;t.className=err?'on err':'on';clearTimeout(t._t);t._t=setTimeout(()=>t.className='',err?4500:2400)}
-async function safe(fn,okMsg){try{const r=await fn();if(okMsg)toast(okMsg);return r}catch(e){console.error(e);toast('No se pudo guardar: '+errTxt(e),true);throw e}}
+async function safe(fn,okMsg){try{const r=await fn();if(okMsg)toast(okMsg);return r}catch(e){console.error(e);errLog('guardar',errTxt(e),e&&e.stack);toast('No se pudo guardar: '+errTxt(e),true);throw e}}
+/* registro de errores: se guarda aparte (hv1err:), no se sincroniza ni se borra con los datos de prueba */
+const ERRLOG={n:0,seen:new Set()};
+function errLog(tipo,msg,stack){try{if(!sb||LOCAL)return;msg=String(msg||'').slice(0,400);const k=tipo+'|'+msg;if(ERRLOG.seen.has(k)||ERRLOG.n>=30)return;ERRLOG.seen.add(k);ERRLOG.n++;
+  const ts=new Date().toISOString();let quien='(sin entrar)',suc='',turno='',pant='';try{if(S){quien=(S.nombre||'')+' ('+S.role+')';suc=S.suc||'';turno=S.turno||''}pant=view+'/'+tab}catch(_){}
+  const e={ts,tipo,msg,stack:String(stack||'').slice(0,800),quien,suc,turno,pantalla:pant,ua:navigator.userAgent.slice(0,160)};
+  sb.from('kv').upsert({key:'hv1err:'+ts+':'+Math.random().toString(36).slice(2,8),value:JSON.stringify(e),updated_at:ts}).then(()=>{},()=>{})}catch(_){}}
+window.addEventListener('error',ev=>errLog('error',ev.message,ev.error&&ev.error.stack));
+window.addEventListener('unhandledrejection',ev=>{const r=ev.reason;errLog('promesa',r&&r.message||r,r&&r.stack)});
 function modal(title,html){$('#mb').innerHTML=`<div class="mh"><h3>${esc(title)}</h3><button class="x" onclick="closeModal()">✕</button></div>${html}`;setTimeout(()=>fmtTodos($('#mb')),0);$('#modal').classList.add('on')}
 function closeModal(){$('#modal').classList.remove('on');$('#mb').innerHTML='';stopBeep()}
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal'&&!$('#mb .alarm'))closeModal()});
