@@ -969,7 +969,9 @@ function msgInboxDe(m){if(m.deRole==='enc'){const sid=msgSucDe(m);return sid?'en
 function msgEsMio(m){if(!S)return false;if(S.role==='enc')return m.deRole==='enc'&&msgSucDe(m)===S.suc;return m.de===remitente()}
 function msgLeidoTxt(m){const L=m.leidoPor||[];if(L.length)return'Leído por '+L.map(x=>x.quien+(x.turno?' ('+x.turno+')':'')+' · '+fHora(x.ts)).join(', ');return m.leido?'Leído':'Sin leer'}
 function msgMarcar(m){m.leido=true;m.leidoPor=[...(m.leidoPor||[]),{quien:(S.nombre||remitente()),turno:S.role==='enc'?S.turno:'',ts:new Date().toISOString()}]}
-let MSGF={fotos:[]},MSGR=null,MSGQ='',MSGV='todos',MSGN=15;
+let MSGF={fotos:[]},MSGR=null,MSGQ='',MSGV='todos',MSGN=15,MSGD=[],MSGT='';
+function msgDestToggle(id,on){MSGT=($('#msg-txt')||{}).value??MSGT;MSGD=MSGD.filter(x=>x!==id);if(on)MSGD.push(id);render()}
+function msgDestTodas(ids,on){MSGT=($('#msg-txt')||{}).value??MSGT;MSGD=MSGD.filter(x=>!ids.includes(x));if(on)MSGD.push(...ids);render()}
 function mensajesHTML(){
   const ids=inboxIds(),rec=m=>ids.includes(m.para);
   const mios=D.msg.filter(m=>rec(m)||msgEsMio(m));
@@ -987,9 +989,16 @@ function mensajesHTML(){
   const hilo=L=>{const raiz=L[0],ult=[...L].reverse().find(m=>!msgEsMio(m)&&msgInboxDe(m)&&!ids.includes(msgInboxDe(m))),dest=ult?msgInboxDe(ult):(msgEsMio(raiz)&&!ids.includes(raiz.para)?raiz.para:null);const k=raiz.resp||raiz.id;
     return`<div class="it" style="display:block">${L.length>1?`<div class="xs mut">Conversación · ${L.length} mensajes</div>`:''}${L.map(item).join('')}
     ${dest?(MSGR===k?`<div style="margin-top:8px"><textarea class="in" id="msg-resp" placeholder="Escribí la respuesta para ${esc(destNom(dest))}"></textarea><div class="row" style="margin-top:6px"><span class="sp"></span><button class="btn o sm" onclick="MSGR=null;render()">Cancelar</button><button class="btn y sm" onclick="msgResponder('${k}','${dest}')">Enviar respuesta</button></div></div>`:`<button class="btn o sm" style="margin-top:6px" onclick="MSGR='${k}';render()">Responder</button>`):''}</div>`};
-  return`<div class="card"><h3>Enviar mensaje a otra área</h3>
-  <div class="fld"><label class="f">Para</label><select class="in" id="msg-para">${opts.map(a=>`<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></div>
-  <div class="fld"><label class="f">Mensaje</label><textarea class="in" id="msg-txt" placeholder="Escribí el aviso o la consulta"></textarea></div>
+  MSGD=MSGD.filter(id=>opts.some(a=>a.id===id));
+  const oSuc=opts.filter(a=>a.id.startsWith('enc:')),oArea=opts.filter(a=>!a.id.startsWith('enc:'));
+  const chip=a=>`<label class="sm" style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:${MSGD.includes(a.id)?'var(--yel)':'transparent'};cursor:pointer"><input type="checkbox" ${MSGD.includes(a.id)?'checked':''} onchange="msgDestToggle('${a.id}',this.checked)"> ${esc(a.nombre.replace('Responsables · ',''))}</label>`;
+  const todas=(L,t)=>{const ids=L.map(a=>a.id),all=ids.length&&ids.every(i=>MSGD.includes(i));return`<label class="sm b" style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--ink,#222);border-radius:999px;cursor:pointer"><input type="checkbox" ${all?'checked':''} onchange='msgDestTodas(${JSON.stringify(ids)},this.checked)'> ${t}</label>`};
+  return`<div class="card"><h3>Enviar mensaje</h3>
+  <div class="fld"><label class="f">Para (podés marcar varios)</label>
+   ${oSuc.length?`<div class="xs mut" style="margin:2px 0 4px">Responsables de sucursal</div><div style="display:flex;flex-wrap:wrap;gap:6px">${todas(oSuc,'Todas las sucursales')}${oSuc.map(chip).join('')}</div>`:''}
+   ${oArea.length?`<div class="xs mut" style="margin:10px 0 4px">Áreas</div><div style="display:flex;flex-wrap:wrap;gap:6px">${todas(oArea,'Todas las áreas')}${oArea.map(chip).join('')}</div>`:''}
+   ${MSGD.length?`<div class="xs mut" style="margin-top:6px">Le llega a ${MSGD.length===1?'1 destino':MSGD.length+' destinos'}: ${esc(MSGD.map(id=>destNom(id).replace('Responsables · ','')).join(', '))}</div>`:''}</div>
+  <div class="fld"><label class="f">Mensaje</label><textarea class="in" id="msg-txt" placeholder="Escribí el aviso o la consulta" oninput="MSGT=this.value">${esc(MSGT)}</textarea></div>
   <div class="row"><label class="upl">📷 Foto (opcional)<input type="file" accept="image/*" onchange="msgFoto(this)"></label><span class="sm mut">${MSGF.fotos.length?MSGF.fotos.length+' foto lista':''}</span><span class="sp"></span><button class="btn y" onclick="msgEnviar()">Enviar</button></div></div>
   <div class="card"><div class="row" style="flex-wrap:wrap;gap:8px"><h3 class="sp" style="margin:0">${S.role==='enc'?'Mensajes de la sucursal':'Mensajes'}</h3>${nl?`<button class="btn o sm" onclick="msgTodosLeidos()">Marcar todos como leídos</button>`:''}</div>
   ${S.role==='enc'?'<p class="xs mut" style="margin:4px 0 0">Acá ves lo que mandaron y recibieron todos los responsables de la sucursal, de todos los turnos.</p>':''}
@@ -999,8 +1008,9 @@ function mensajesHTML(){
   ${tot>V.length?`<button class="btn o full" style="margin-top:10px" onclick="MSGN+=15;render()">Ver mensajes anteriores (${tot-V.length} más)</button>`:''}</div>`;
 }
 async function msgFoto(inp){if(!inp.files[0])return;MSGF.fotos=[await compress(inp.files[0])];render()}
-async function msgEnviar(){const para=$('#msg-para').value,txt=$('#msg-txt').value.trim();if(!txt)return toast('Escribí el mensaje',true);
-  await safe(async()=>{let foto=null;if(MSGF.fotos[0])foto=await saveFoto(MSGF.fotos[0]);await enviarMsg(para,txt,foto?{foto}:{})},'Mensaje enviado');MSGF={fotos:[]};render()}
+async function msgEnviar(){const txt=($('#msg-txt').value||'').trim();const dest=[...new Set(MSGD)];if(!dest.length)return toast('Marcá a quién le mandás el mensaje',true);if(!txt)return toast('Escribí el mensaje',true);
+  let ok=false;await safe(async()=>{let foto=null;if(MSGF.fotos[0])foto=await saveFoto(MSGF.fotos[0]);const grupo=dest.length>1?uid():null;for(const para of dest)await enviarMsg(para,txt,{...(foto?{foto}:{}),...(grupo?{grupo,nDest:dest.length}:{})});ok=true},dest.length>1?'Mensaje enviado a '+dest.length+' destinos':'Mensaje enviado');
+  if(ok){MSGF={fotos:[]};MSGD=[];MSGT=''}render()}
 async function msgResponder(k,dest){const txt=($('#msg-resp').value||'').trim();if(!txt)return toast('Escribí la respuesta',true);const ids=inboxIds();
   await safe(async()=>{for(const m of D.msg.filter(m=>(m.resp||m.id)===k&&ids.includes(m.para)&&!m.leido)){msgMarcar(m);await DB.set('msg:'+m.id,m)}await enviarMsg(dest,txt,{resp:k})},'Respuesta enviada');MSGR=null;render()}
 async function msgTodosLeidos(){const L=misMensajes().filter(m=>!m.leido);await safe(async()=>{for(const m of L){msgMarcar(m);await DB.set('msg:'+m.id,m)}},'Listo');render()}
