@@ -521,7 +521,7 @@ let S=null; // {role, nombre, empId, suc, turno}
 let view='home',tab=null;
 function saveSession(){try{localStorage.setItem('hg-session',JSON.stringify({S,day:hoy()}))}catch(e){}}
 function loadSession(){try{const x=JSON.parse(localStorage.getItem('hg-session')||'null');if(x&&x.S&&((x.S.role!=='enc'&&x.S.role!=='emp')||x.day===hoy()))return x.S}catch(e){}return null}
-function logout(){S=null;try{localStorage.removeItem('hg-session')}catch(e){}view='home';stopAlarms();render()}
+function logout(){S=null;ASI=null;STK=null;CD=null;CD_ORIG=null;CAFD=null;try{localStorage.removeItem('hg-session')}catch(e){}view='home';stopAlarms();render()}
 
 /* ---------------- carga de datos ---------------- */
 const D={act:[],mlp:[],dst:[],skc:[],ncr:[],mkc:[],mkm:[],mkr:[],mkp:[],mkpc:[],grl:[],grs:[],mtt:[],mtr:[],mpg:[],mgs:[],mcj:[],mrd:[],mri:[],caf:{},npl:{},cpr:[],cap:[],eva:[],npr:[],npi:[],cpl:[],ren:[],pac:[],aud:[],fal:[],ctp:[],fic:[],rec:[],cen:[],dec:[],prv:[],ocp:[],ppg:[],lec:{},stk:{},est:[],gri:{},lfin:[],pag:[],nov:[],liq:{},vac:[],log:[],cie:{},mov:{},asi:{},mes:[],pre:[],vou:[],real:{},rt:{},rtEf:{},aho:[],ant:[],cert:[],msg:[],ped:[],rdo:{}};
@@ -1594,7 +1594,7 @@ function stopBeep(){if(BEEP){clearInterval(BEEP.iv);try{BEEP.ctx.close()}catch(e
 let ASI=null;
 function encPersonal(){
   const f=hoy(),m=mesDe(f);
-  if(!ASI||ASI.fecha!==f){
+  if(!ASI||ASI.fecha!==f||ASI.suc!==S.suc||ASI.turno!==S.turno){
     const ex=(D.asi[m]||[]).find(a=>a.fecha===f&&a.suc===S.suc&&a.turno===S.turno);
     if(ex)ASI=clone(ex);
     else{const its=griItems(f,S.suc,S.turno).sort((a,b)=>pstOrd(a.puesto)-pstOrd(b.puesto)||(a.desde<b.desde?-1:1));const grilla=griHayDia(f,S.suc);
@@ -1621,6 +1621,7 @@ function asiSet(i,k,v){ASI.items[i][k]=v;render()}
 function asiEntrada(i,v){const it=ASI.items[i];it.entrada=v;let d=hm(v)-hm(it.desde);if(v&&d<=0){it.min=0;it.estado='presente';it.entrada='';toast('Entró a horario: queda como presente');return render()}it.min=Math.max(0,d);render()}
 function asiAdd(){const id=$('#asi-add').value;if(!id)return;const e=emp(id);ASI.items.push({empId:e.id,nombre:e.nombre,puesto:e.puesto||'',estado:'presente',min:0,uniforme:true,mal:false,malTxt:'',cubre:true});render()}
 async function asiGuardar(){
+  if(!ASI||ASI.suc!==S.suc||ASI.turno!==S.turno){ASI=null;render();return toast('La planilla abierta era de otro turno. Se recargó la de tu turno: revisala y guardá de nuevo.',true)}
   const sinHora=ASI.items.filter(x=>x.estado==='tarde'&&(x.desde?!x.entrada:!n(x.min)));if(sinHora.length)return toast(`Poné a qué hora entró ${sinHora.map(x=>x.nombre.split(' ')[0]).join(', ')}`,true);
   ASI.por=S.nombre;ASI.ts=new Date().toISOString();
   const m=mesDe(ASI.fecha);
