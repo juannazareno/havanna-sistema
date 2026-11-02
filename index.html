@@ -526,10 +526,21 @@ const SES_MAX=2*3600e3,SES_CORTE='14:30',SES_GRACIA=30*60e3;let SES_AVISO=0;
 function sesVence(){if(!S||S.role!=='enc')return 0;if(!S.desde){S.desde=Date.now();saveSession()}
   const d=new Date(S.desde);let v=S.desde+SES_MAX;const c=new Date(d);const [h,mi]=SES_CORTE.split(':').map(Number);c.setHours(h,mi,0,0);if(d<c&&c.getTime()<v)v=c.getTime();return v}
 function sesEditando(){return !!(CD||$('#modal').classList.contains('on')||(document.activeElement&&document.activeElement.matches('input,textarea,select')))}
-function sesCheck(){const v=sesVence();if(!v||Date.now()<v)return;
+/* inactividad (como un banco): responsables y empleados, que usan aparatos compartidos */
+const INACT_MAX=10*60e3,INACT_AVISO=9*60e3;let ULT_ACT=Date.now(),INACT_AVISADO=false;
+['pointerdown','keydown','touchstart','input','wheel'].forEach(ev=>document.addEventListener(ev,()=>{ULT_ACT=Date.now();INACT_AVISADO=false},{passive:true,capture:true}));
+const sesCompartida=()=>!!S&&(S.role==='enc'||S.role==='emp');
+const DRAFT_K='hg-draft-cie';
+function cieDraftGuardar(){try{if(!(S&&S.role==='enc'&&CD&&CD_MODE==='enc'))return;const d={empId:S.empId,suc:S.suc,turno:S.turno,ts:Date.now(),cd:CD};let j=JSON.stringify(d);if(j.length>3e6){d.cd={...CD,_new:[]};j=JSON.stringify(d)}localStorage.setItem(DRAFT_K,j)}catch(e){}}
+function cieDraftTomar(id){try{const d=JSON.parse(localStorage.getItem(DRAFT_K)||'null');if(!d||!S||d.empId!==S.empId||d.suc!==S.suc||Date.now()-d.ts>12*3600e3)return null;const c=d.cd;if(!c)return null;if(id&&c.id!==id)return null;if(!id&&(c.turno!==S.turno||c.fecha!==nuevoCierre().fecha))return null;if(!id&&Object.values(D.cie).flat().some(x=>x.id===c.id||(x.fecha===c.fecha&&x.suc===c.suc&&x.turno===c.turno)))return null;if(id){const ex=Object.values(D.cie).flat().find(x=>x.id===id);if(ex&&ex.mod&&new Date(ex.mod).getTime()>d.ts)return null}c._new=c._new||[];return c}catch(e){return null}}
+function cieDraftBorrar(){try{localStorage.removeItem(DRAFT_K)}catch(e){}}
+function sesInactCheck(){if(!sesCompartida())return false;const q=Date.now()-ULT_ACT;
+  if(q>=INACT_MAX){cieDraftGuardar();try{localStorage.setItem('hg-salida','inact')}catch(e){}logout();setTimeout(()=>location.reload(),300);return true}
+  if(q>=INACT_AVISO&&!INACT_AVISADO){INACT_AVISADO=true;toast('Se cierra la sesión en 1 minuto por falta de uso. Tocá la pantalla para seguir.',true)}return false}
+function sesCheck(){if(sesInactCheck())return;cieDraftGuardar();const v=sesVence();if(!v||Date.now()<v)return;
   if(sesEditando()&&Date.now()<v+SES_GRACIA){if(Date.now()-SES_AVISO>5*60e3){SES_AVISO=Date.now();toast('Terminá lo que estás cargando y guardalo: en unos minutos se cierra tu sesión.',true)}return}
   try{localStorage.setItem('hg-salida','1')}catch(e){}logout();setTimeout(()=>location.reload(),300)}
-setInterval(sesCheck,30000);
+setInterval(sesCheck,15000);
 function logout(){S=null;ASI=null;STK=null;CD=null;CD_ORIG=null;CAFD=null;try{localStorage.removeItem('hg-session')}catch(e){}view='home';stopAlarms();render()}
 
 /* ---------------- carga de datos ---------------- */
@@ -1701,8 +1712,9 @@ function encCierre(){
 }
 function abrirCierre(id){
   if(!S)return;CD_MODE='enc';
-  if(id){const c=Object.values(D.cie).flat().find(x=>x.id===id);CD=clone(c)}else CD=nuevoCierre();
-  CD._new=[];render();window.scrollTo(0,0);
+  const dr=cieDraftTomar(id);
+  if(dr){CD=dr;setTimeout(()=>toast('Recuperamos el cierre que estabas cargando'),300)}else{if(id){const c=Object.values(D.cie).flat().find(x=>x.id===id);CD=clone(c)}else CD=nuevoCierre();CD._new=[]}
+  render();window.scrollTo(0,0);
 }
 /* =====================================================================
    CONSUMOS INTERNOS — los carga el responsable de turno en el cierre
@@ -1910,7 +1922,7 @@ async function encEnviarCierre(){
     }
     Object.keys(D.cie).forEach(k=>D.cie[k]=D.cie[k].filter(x=>x.id!==c.id));(D.cie[m]=D.cie[m]||[]).push(c);
   },c.nro?'Cierre N° '+c.nro+' enviado a Administración':'Cierre enviado a Administración');
-  CD=null;render();
+  if(!Object.values(D.cie).flat().some(x=>x.id===CD.id&&x.estado==='enviado'))return;cieDraftBorrar();CD=null;render();
 }
 
 /* pedidos */
@@ -4567,7 +4579,7 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
   if(SIN_LIB){$('#app').innerHTML='<div class="loading">No se pudo cargar la conexión con la nube (puede ser internet lento o cortado).<br><br>No cargues nada hasta que se conecte.<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
   try{await loadConfig()}catch(e){console.error(e);$('#app').innerHTML='<div class="loading">No se pudo conectar con la base de datos.<br><br>Motivo: <b>'+esc(errTxt(e))+'</b><br><br>Revisá internet y recargá. Si sigue igual, puede que el proyecto de Supabase esté pausado: entrá a Supabase y tocá "Resume project".<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
   S=loadSession();
-  try{if(localStorage.getItem('hg-salida')){localStorage.removeItem('hg-salida');setTimeout(()=>toast('Se cerró la sesión del turno (cada 2 horas y en el cambio de turno). Volvé a entrar con tu clave.'),600)}}catch(e){}
+  try{const sx=localStorage.getItem('hg-salida');if(sx){localStorage.removeItem('hg-salida');setTimeout(()=>toast(sx==='inact'?'Se cerró la sesión por 10 minutos sin uso. Volvé a entrar con tu clave: lo que guardaste está todo.':'Se cerró la sesión del turno (cada 2 horas y en el cambio de turno). Volvé a entrar con tu clave.'),600)}}catch(e){}
   if(S&&S.role==='enc'&&sesVence()&&Date.now()>=sesVence()){S=null;try{localStorage.removeItem('hg-session')}catch(e){}}
   if(S){view='app';tab=TAB_INI[S.role]||'resumen';await refresh();render();if(S.role==='enc')startAlarms()}
   else render();
