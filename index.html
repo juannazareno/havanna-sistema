@@ -528,7 +528,21 @@ function sesVence(){if(!S||S.role!=='enc')return 0;if(!S.desde){S.desde=Date.now
 function sesEditando(){return !!(CD||$('#modal').classList.contains('on')||(document.activeElement&&document.activeElement.matches('input,textarea,select')))}
 /* inactividad (como un banco): responsables y empleados, que usan aparatos compartidos */
 const INACT_MAX=10*60e3,INACT_AVISO=9*60e3;let ULT_ACT=Date.now(),INACT_AVISADO=false;
-['pointerdown','keydown','touchstart','input','wheel'].forEach(ev=>document.addEventListener(ev,()=>{ULT_ACT=Date.now();INACT_AVISADO=false},{passive:true,capture:true}));
+let ULT_ACT_G=0;const ultActGuardar=()=>{if(Date.now()-ULT_ACT_G>60e3){ULT_ACT_G=Date.now();try{localStorage.setItem('hg-ult',String(Date.now()))}catch(e){}}};
+['pointerdown','keydown','touchstart','input','wheel'].forEach(ev=>document.addEventListener(ev,()=>{ULT_ACT=Date.now();INACT_AVISADO=false;ultActGuardar()},{passive:true,capture:true}));
+/* cargos de oficina: la página se mantiene al día sola, sin pedir clave */
+const OFI_RECARGA=30*60e3,OFI_CIERRE=12*3600e3;
+const ofiLibre=()=>!sesEditando()&&Date.now()-ULT_EDIT>5000;
+function recargarSuave(motivo){try{localStorage.setItem('hg-recarga',motivo)}catch(e){}location.reload()}
+function ofiCheck(){if(!S||sesCompartida())return false;const q=Date.now()-ULT_ACT;
+  if(q>=OFI_CIERRE){logout();return true}
+  if(q>=OFI_RECARGA&&ofiLibre()){recargarSuave('inact');return true}return false}
+/* versión nueva subida: se recarga sola */
+let VER_BASE=null;async function verHuella(){const r=await fetch(location.pathname+'?v='+Date.now(),{cache:'no-store'});if(!r.ok)return null;const t=await r.text();let h=0;for(let i=0;i<t.length;i+=7)h=(h*31+t.charCodeAt(i))|0;return t.length+':'+h}
+let VER_OFF=location.protocol==='file:';async function verCheck(){if(VER_OFF||LOCAL)return;try{const h=await verHuella();if(!h)return;if(!VER_BASE){VER_BASE=h;return}if(h!==VER_BASE){if(S&&(sesEditando()||Date.now()-ULT_EDIT<5000))return;recargarSuave('version')}}catch(e){}}
+setTimeout(verCheck,20000);setInterval(verCheck,5*60e3);
+/* al volver a la pestaña: datos al día al instante */
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState!=='visible'||!S||!sb||view!=='app')return;if(sesCheck&&sesInactCheck())return;if(ofiCheck())return;if(sesEditando()||Date.now()-ULT_EDIT<5000)return;try{await refresh();render()}catch(e){}});
 const sesCompartida=()=>!!S&&(S.role==='enc'||S.role==='emp');
 const DRAFT_K='hg-draft-cie';
 function cieDraftGuardar(){try{if(!(S&&S.role==='enc'&&CD&&CD_MODE==='enc'))return;const d={empId:S.empId,suc:S.suc,turno:S.turno,ts:Date.now(),cd:CD};let j=JSON.stringify(d);if(j.length>3e6){d.cd={...CD,_new:[]};j=JSON.stringify(d)}localStorage.setItem(DRAFT_K,j)}catch(e){}}
@@ -537,7 +551,7 @@ function cieDraftBorrar(){try{localStorage.removeItem(DRAFT_K)}catch(e){}}
 function sesInactCheck(){if(!sesCompartida())return false;const q=Date.now()-ULT_ACT;
   if(q>=INACT_MAX){cieDraftGuardar();try{localStorage.setItem('hg-salida','inact')}catch(e){}logout();setTimeout(()=>location.reload(),300);return true}
   if(q>=INACT_AVISO&&!INACT_AVISADO){INACT_AVISADO=true;toast('Se cierra la sesión en 1 minuto por falta de uso. Tocá la pantalla para seguir.',true)}return false}
-function sesCheck(){if(sesInactCheck())return;cieDraftGuardar();const v=sesVence();if(!v||Date.now()<v)return;
+function sesCheck(){if(sesInactCheck())return;if(ofiCheck())return;cieDraftGuardar();const v=sesVence();if(!v||Date.now()<v)return;
   if(sesEditando()&&Date.now()<v+SES_GRACIA){if(Date.now()-SES_AVISO>5*60e3){SES_AVISO=Date.now();toast('Terminá lo que estás cargando y guardalo: en unos minutos se cierra tu sesión.',true)}return}
   try{localStorage.setItem('hg-salida','1')}catch(e){}logout();setTimeout(()=>location.reload(),300)}
 setInterval(sesCheck,15000);
@@ -963,6 +977,7 @@ async function doLogin(){
 async function loginComo(r){S=r==='dueno'?{role:'dueno',nombre:'Dueños'}:{role:'gerente',nombre:'Gerente general'};tab=r==='gerente'?'gerencia':'resumen';await finLogin()}
 async function finLogin(){
   if(S&&S.role==='enc')S.desde=Date.now();
+  try{localStorage.setItem('hg-ult',String(Date.now()))}catch(e){}
   saveSession();view='app';$('#app').innerHTML='<div class="loading"><div class="spin"></div>Cargando datos…</div>';
   await refresh();render();if(S.role==='enc')startAlarms();
 }
@@ -4579,6 +4594,8 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
   if(SIN_LIB){$('#app').innerHTML='<div class="loading">No se pudo cargar la conexión con la nube (puede ser internet lento o cortado).<br><br>No cargues nada hasta que se conecte.<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
   try{await loadConfig()}catch(e){console.error(e);$('#app').innerHTML='<div class="loading">No se pudo conectar con la base de datos.<br><br>Motivo: <b>'+esc(errTxt(e))+'</b><br><br>Revisá internet y recargá. Si sigue igual, puede que el proyecto de Supabase esté pausado: entrá a Supabase y tocá "Resume project".<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
   S=loadSession();
+  try{const rc=localStorage.getItem('hg-recarga');if(rc){localStorage.removeItem('hg-recarga');if(rc==='version')setTimeout(()=>toast('Se actualizó el sistema'),600)}}catch(e){}
+  try{const u=+localStorage.getItem('hg-ult')||0;if(S&&!(S.role==='enc'||S.role==='emp')&&u&&Date.now()-u>=OFI_CIERRE){S=null;localStorage.removeItem('hg-session');setTimeout(()=>toast('Se cerró la sesión por 12 horas sin uso. Volvé a entrar con tu clave.'),600)}else if(u&&Date.now()-u<OFI_CIERRE)ULT_ACT=Math.max(ULT_ACT,u)}catch(e){}
   try{const sx=localStorage.getItem('hg-salida');if(sx){localStorage.removeItem('hg-salida');setTimeout(()=>toast(sx==='inact'?'Se cerró la sesión por 10 minutos sin uso. Volvé a entrar con tu clave: lo que guardaste está todo.':'Se cerró la sesión del turno (cada 2 horas y en el cambio de turno). Volvé a entrar con tu clave.'),600)}}catch(e){}
   if(S&&S.role==='enc'&&sesVence()&&Date.now()>=sesVence()){S=null;try{localStorage.removeItem('hg-session')}catch(e){}}
   if(S){view='app';tab=TAB_INI[S.role]||'resumen';await refresh();render();if(S.role==='enc')startAlarms()}
