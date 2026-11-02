@@ -1171,8 +1171,8 @@ function lecRequeridos(f){const out=[],ah=ahoraHM(),h=hoy(),m=mesDe(f);if(f>h)re
   const ya=new Set();const asiDe=(sid,t)=>(D.asi[m]||[]).find(x=>x.fecha===f&&x.suc===sid&&x.turno===t);
   (g&&g.items?g.items:[]).filter(i=>i.f===f&&i.empId).forEach(i=>{const e=emp(i.empId);if(!e||ausAuto(e,f))return;const a=asiDe(i.suc,i.turno),ai=a&&(a.items||[]).find(x=>x.empId===i.empId);if(ai&&ai.estado==='ausente')return;
     const desde=ai&&ai.entrada?ai.entrada:i.desde;if(f===h&&ah<masMin(desde,30))return;const k=i.empId+'|'+i.turno;if(ya.has(k))return;ya.add(k);out.push({empId:i.empId,suc:i.suc,turno:i.turno,desde})});
-  (D.asi[m]||[]).filter(a=>a.fecha===f).forEach(a=>(a.items||[]).forEach(it=>{if(!it.cubre||it.estado==='ausente')return;const e=emp(it.empId);if(!e)return;const k=it.empId+'|'+a.turno;if(ya.has(k))return;
-    const desde=it.entrada||sucHor(a.suc,a.turno,f).desde;if(f===h&&ah<masMin(desde,30))return;ya.add(k);out.push({empId:it.empId,suc:a.suc,turno:a.turno,desde})}));
+  (D.asi[m]||[]).filter(a=>a.fecha===f).forEach(a=>(a.items||[]).forEach(it=>{if(it.estado==='ausente')return;const e=emp(it.empId);if(!e)return;const k=it.empId+'|'+a.turno;if(ya.has(k))return;
+    const desde=it.entrada||it.desde||sucHor(a.suc,a.turno,f).desde;if(f===h&&ah<masMin(desde,30))return;ya.add(k);out.push({empId:it.empId,suc:a.suc,turno:a.turno,desde})}));
   return out}
 const lecVigente=(l,u)=>l&&(!u||l.stkId===u.id);
 async function encLeido(){const f=fechaOp(),u=stkPrevio(S.suc,f,S.turno);const x={id:lecId(S.empId,f,S.turno),empId:S.empId,nombre:S.nombre,suc:S.suc,fecha:f,turno:S.turno,stkId:u?u.id:'',estrellas:estActivas(S.suc).map(e=>e.prodId),ts:new Date().toISOString()};
@@ -1428,8 +1428,7 @@ function novedadesDia(f){const out=[];const m=mesDe(f);
   // turnos: puestos sin cubrir y planillas sin cargar
   {const ahoraT=new Date().toTimeString().slice(0,5),gw=D.gri[lunesDe(f)];
   CFG.sucursales.filter(x=>x.control!==false||Object.keys(sucMin(x.id)).length).forEach(x=>{
-    if(!(gw&&(gw.items||[]).some(i=>i.suc===x.id&&i.empId)))return; // la grilla de esa sucursal todavía no se armó esa semana
-    if(!griHayDia(f,x.id)){out.push({grave:true,tipo:'Sin nadie en la grilla',nombre:x.nombre,l:'Ese día no hay nadie asignado',cls:'p-bad'});return}
+    if(!griHayDia(f,x.id)){if(x.control!==false)out.push({grave:true,tipo:'Sin grilla de RRHH',nombre:x.nombre,l:(gw&&(gw.items||[]).some(i=>i.suc===x.id&&i.empId))?'Ese día no hay nadie asignado':'Esta semana no se armó la grilla',det:'la planilla del responsable trae a todos los empleados de la sucursal',cls:'p-bad'});return}
     x.turnos.forEach(t=>{const its=griItems(f,x.id,t);const l=x.nombre+' · '+t;
     const fal=griFaltan(f,x.id,t);if(fal.length)out.push({grave:true,tipo:'Puesto sin cubrir',nombre:fal.join(', '),l,cls:'p-bad'});
     const ini=its.reduce((v,i)=>i.desde<v?i.desde:v,'99:99');
@@ -1478,7 +1477,8 @@ function rrhhNovMes(){const m=SEL.mes;const emps=CFG.empleados.filter(e=>e.activ
   </tbody></table></div></div>`}
 const novSwitch=()=>`<div class="seg" style="margin-bottom:12px"><button class="${NOVV==='dia'?'on':''}" onclick="NOVV='dia';render()">Del día</button><button class="${NOVV==='mes'?'on':''}" onclick="NOVV='mes';render()">Del mes, por empleado</button></div>`;
 function rrhhNovedades(){if(NOVV==='mes')return novSwitch()+rrhhNovMes();const f=NOVF||hoy();const ls=novedadesDia(f);
-  return novSwitch()+`<div class="row" style="margin-bottom:12px"><h2 class="sec sp" style="margin:0">Novedades del día</h2><button class="btn o sm" onclick="NOVF=sumDias('${f}',-1);render()">◀</button><input class="in" type="date" style="max-width:170px" value="${f}" onchange="NOVF=this.value;render()"><button class="btn o sm" onclick="NOVF=sumDias('${f}',1);render()">▶</button></div>
+  const mna=sumDias(hoy(),1),sinMna=CFG.sucursales.filter(x=>x.control&&!griHayDia(mna,x.id)).map(x=>x.nombre);
+  return novSwitch()+(f===hoy()&&sinMna.length?`<div class="al w"><b>Mañana (${fFecha(mna)}) no tienen grilla:</b> ${esc(sinMna.join(', '))}. Armala en Turnos y francos para que la planilla de los responsables salga bien.</div>`:'')+`<div class="row" style="margin-bottom:12px"><h2 class="sec sp" style="margin:0">Novedades del día</h2><button class="btn o sm" onclick="NOVF=sumDias('${f}',-1);render()">◀</button><input class="in" type="date" style="max-width:170px" value="${f}" onchange="NOVF=this.value;render()"><button class="btn o sm" onclick="NOVF=sumDias('${f}',1);render()">▶</button></div>
   <p class="sm mut" style="margin-top:-6px">Lo que cargan los responsables en la planilla de personal al abrir el turno (ausencias, llegadas tarde, uniforme, mal rendimiento) y quiénes no están por vacaciones, certificado o suspensión. Todo queda también en el legajo de cada empleado.</p>
   <div class="card">${ls.length?`<div class="tw"><table class="t"><thead><tr><th>Novedad</th><th>Empleado</th><th>Dónde</th><th>Detalle</th><th>Cargó</th></tr></thead><tbody>${ls.map(x=>`<tr ${x.empId?`style="cursor:pointer" onclick="rGo('empleados');LEG='${x.empId}';LEGT='historial';render()"`:''}><td><span class="pill ${x.cls}">${esc(x.tipo)}</span></td><td class="sm"><b>${esc(x.nombre)}</b></td><td class="sm">${esc(x.l||'')}</td><td class="sm">${esc(x.det||'')}</td><td class="xs mut">${esc(x.por||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Sin novedades.</div>'}</div>`}
 
@@ -1611,7 +1611,7 @@ function encInicio(){
   const ped=D.ped.filter(p=>p.suc===S.suc&&p.estado!=='recibido');
   const antOk=D.ant.filter(a=>a.suc===S.suc&&a.estado==='aprobado');
   const nl=noLeidos();
-  return`<h2 class="sec">Hola, ${esc(S.nombre.split(' ')[0])}</h2>${cafEncHTML()}${mkpEncHTML()}${nprEmpHTML(S.empId,S.suc)}${nprEncHTML()}${cartaProds(S.suc).length?stockAvisosHTML(S.suc,fechaOp(),S.turno)+(()=>{const l=lecDe(S.empId,fechaOp(),S.turno);return S.empId&&lecVigente(l,stkPrevio(S.suc,fechaOp(),S.turno))?`<div class="al ok" style="text-align:center;margin-bottom:14px">✓ Leído a las ${new Date(l.ts).toTimeString().slice(0,5)}</div>`:S.empId?`<button class="btn y full" style="margin-bottom:14px" onclick="encLeido()">Ya lo leí</button>`:''})():''}
+  return`<h2 class="sec">Hola, ${esc(S.nombre.split(' ')[0])}</h2>${suc(S.suc).control&&!griHayDia(fechaOp(),S.suc)?`<div class="al w"><b>RRHH no armó la grilla de hoy para ${esc(suc(S.suc).nombre)}.</b> La planilla de personal te trae a todos los empleados de la sucursal: marcá presente solo a los que vinieron y ausente a los que tenían que venir y faltaron. A los que son de otro turno sacalos con el botón <b>Es de otro turno</b>.</div>`:''}${cafEncHTML()}${mkpEncHTML()}${nprEmpHTML(S.empId,S.suc)}${nprEncHTML()}${cartaProds(S.suc).length?stockAvisosHTML(S.suc,fechaOp(),S.turno)+(()=>{const l=lecDe(S.empId,fechaOp(),S.turno);return S.empId&&lecVigente(l,stkPrevio(S.suc,fechaOp(),S.turno))?`<div class="al ok" style="text-align:center;margin-bottom:14px">✓ Leído a las ${new Date(l.ts).toTimeString().slice(0,5)}</div>`:S.empId?`<button class="btn y full" style="margin-bottom:14px" onclick="encLeido()">Ya lo leí</button>`:''})():''}
   <div class="grid g3" style="margin-bottom:14px">
    <div class="kpi"><div class="l">Personal del turno</div><div class="v" style="font-size:18px">${asi?'<span class="pill p-ok">Cargado</span>':'<span class="pill p-w">Falta cargar</span>'}</div></div>
    <div class="kpi"><div class="l">Cierre de turno</div><div class="v" style="font-size:18px">${mio?(mio.estado==='confirmado'?'<span class="pill p-ok">Confirmado</span>':'<span class="pill p-i">Enviado</span>'):'<span class="pill p-n">Pendiente</span>'}</div></div>
@@ -1658,7 +1658,7 @@ function encPersonal(){
    <div class="row"><b class="sp">${esc(it.nombre)}${it.puesto?` <span class="pill p-n">${esc(pstN(it.puesto))}</span>`:''}${it.desde?` <span class="sm mut" style="font-weight:400">${it.desde} a ${it.hasta}</span>`:''}${it.motivo?` <span class="pill p-i">${esc(it.motivo)}</span>`:''}${it.cubre?' <span class="pill p-n">Cubre</span>':''}</b><div class="seg">
     <button class="${it.estado==='presente'?'on okc':''}" onclick="asiSet(${i},'estado','presente')">Presente</button>
     <button class="${it.estado==='tarde'?'on wc':''}" onclick="asiSet(${i},'estado','tarde')">Tarde</button>
-    <button class="${it.estado==='ausente'?'on bc':''}" onclick="asiSet(${i},'estado','ausente')">Ausente</button></div></div>
+    <button class="${it.estado==='ausente'?'on bc':''}" onclick="asiSet(${i},'estado','ausente')">Ausente</button></div>${!ASI.grilla&&!it.cubre?`<button class="btn o sm" title="Sacar de la planilla" onclick="ASI.items.splice(${i},1);render()">Es de otro turno</button>`:''}</div>
    ${it.estado==='tarde'?(it.desde?`<div class="row" style="margin-top:8px"><label class="sm">¿A qué hora entró?</label><input class="in" type="time" style="width:130px" value="${it.entrada||''}" onchange="asiEntrada(${i},this.value)"><span class="sm ${it.min?'b':'mut'}">${it.min?it.min+' min tarde':'tenía que entrar '+it.desde}</span></div>`:`<div class="row" style="margin-top:8px"><label class="sm">Minutos tarde</label><input class="in" style="width:90px" inputmode="numeric" value="${it.min||''}" oninput="ASI.items[${i}].min=n(this.value)"></div>`):''}
    ${it.estado!=='ausente'?`<div class="row" style="margin-top:8px"><label class="chk" style="border:none;padding:0"><input type="checkbox" ${it.uniforme?'checked':''} onchange="ASI.items[${i}].uniforme=this.checked"> Uniforme OK</label>
    <label class="chk" style="border:none;padding:0;margin-left:14px"><input type="checkbox" ${it.mal?'checked':''} onchange="asiSet(${i},'mal',this.checked)"> Mal rendimiento</label></div>
