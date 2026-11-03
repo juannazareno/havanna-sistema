@@ -575,7 +575,7 @@ async function loadGlobal(){
 const mesesAbiertos=()=>D.mes.filter(x=>x.estado==='abierto').map(x=>x.id).sort();
 const mesesConPlata=()=>D.mes.filter(x=>x.estado==='abierto'||x.estado==='pendiente').map(x=>x.id).sort();
 const mesBloq=m=>{const e=(mesInfo(m)||{}).estado;return e==='cerrado'||e==='pendiente'};
-const ahorroSaldo=cta=>D.aho.reduce((a,x)=>{if(x.tipo==='actneg'||x.tipo==='actpase')return a;if(x.tipo==='pase'){if(x.cuenta===cta)a-=n(x.monto);if(x.destino===cta)a+=n(x.monto);return a}if(x.cuenta!==cta)return a;return a+(x.tipo==='egreso'?-(n(x.monto)+n(x.imp)):n(x.monto))},0);
+const ahorroSaldo=cta=>D.aho.reduce((a,x)=>{if(x.tipo==='actneg'||x.tipo==='actpase'||x.tipo==='actini')return a;if(x.tipo==='pase'){if(x.cuenta===cta)a-=n(x.monto);if(x.destino===cta)a+=n(x.monto);return a}if(x.cuenta!==cta)return a;return a+(x.tipo==='egreso'?-(n(x.monto)+n(x.imp)):n(x.monto))},0);
 const mesInfo=m=>D.mes.find(x=>x.id===m);
 /* los saldos de los bancos se cargan y se controlan solo desde el último mes abierto */
 const mesSaldo=()=>{const a=mesesAbiertos();return a.length?a[a.length-1]:(mesesConPlata().slice(-1)[0]||null)};
@@ -4462,9 +4462,10 @@ function ownReporte(){
    ahorro (aho:) con el campo activoId.
    ===================================================================== */
 const actDe=id=>D.act.find(a=>a.id===id);
-function actCapital(id){return D.aho.reduce((t,a)=>{if(a.activoId===id){if(a.tipo==='egreso'||a.tipo==='actneg')return t+n(a.monto);if(a.tipo==='ingreso'||a.tipo==='actpase')return t-n(a.monto)}if(a.tipo==='actpase'&&a.activoDestino===id)return t+n(a.monto);return t},0)}
+function actCapital(id){return D.aho.reduce((t,a)=>{if(a.activoId===id){if(a.tipo==='egreso'||a.tipo==='actneg'||a.tipo==='actini')return t+n(a.monto);if(a.tipo==='ingreso'||a.tipo==='actpase')return t-n(a.monto)}if(a.tipo==='actpase'&&a.activoDestino===id)return t+n(a.monto);return t},0)}
 function actMovs(id){return D.aho.filter(a=>a.activoId===id||(a.tipo==='actpase'&&a.activoDestino===id)).map(a=>{let v=0,d='';
   if(a.tipo==='egreso'){v=n(a.monto);d='Desde caja de ahorro '+cuentaNom(a.cuenta)}else if(a.tipo==='ingreso'){v=-n(a.monto);d='A caja de ahorro '+cuentaNom(a.cuenta)}
+  else if(a.tipo==='actini'){v=n(a.monto);d='Puesto antes de empezar a usar el sistema (no sale de ninguna caja)'}
   else if(a.tipo==='actneg'){v=n(a.monto);d='Desde la caja de '+mesNombre(a.mes)+' del negocio ('+cuentaNom(a.cuenta)+') · ganancia anticipada'}
   else if(a.tipo==='actpase'){if(a.activoId===id){v=-n(a.monto);d='Pasado a '+((actDe(a.activoDestino)||{}).nombre||'otro activo')}else{v=n(a.monto);d='Desde '+((actDe(a.activoId)||{}).nombre||'otro activo')}}
   return{a,v,d}}).sort((x,y)=>(x.a.fecha+x.a.ts)<(y.a.fecha+y.a.ts)?1:-1)}
@@ -4519,7 +4520,7 @@ async function actMovBorrar(id){const a=D.aho.find(x=>x.id===id);if(!a)return;if
   await safe(async()=>{if(a.tipo==='actneg'&&a.movId){if(mesBloq(a.mes))throw new Error('El mes '+mesNombre(a.mes)+' está cerrado: no se puede deshacer');await DB.del('mov:'+a.mes+':'+a.movId);D.mov[a.mes]=(D.mov[a.mes]||[]).filter(x=>x.id!==a.movId)}
     await DB.del('aho:'+id);D.aho=D.aho.filter(x=>x.id!==id)},'Eliminado');closeModal();render()}
 let AHOF='todas';
-function ahoMovsDe(cta){return D.aho.filter(a=>a.tipo!=='actneg'&&a.tipo!=='actpase'&&(a.cuenta===cta||a.destino===cta)).map(a=>{let v;if(a.tipo==='pase')v=a.cuenta===cta?-n(a.monto):n(a.monto);else v=a.tipo==='egreso'?-(n(a.monto)+n(a.imp)):n(a.monto);return{a,cta,v}})}
+function ahoMovsDe(cta){return D.aho.filter(a=>a.tipo!=='actneg'&&a.tipo!=='actpase'&&a.tipo!=='actini'&&(a.cuenta===cta||a.destino===cta)).map(a=>{let v;if(a.tipo==='pase')v=a.cuenta===cta?-n(a.monto):n(a.monto);else v=a.tipo==='egreso'?-(n(a.monto)+n(a.imp)):n(a.monto);return{a,cta,v}})}
 function ownAhorro(){
   const ctas=CUENTAS_AHO();const tot=ctas.reduce((t,c)=>t+ahorroSaldo(c.id),0);
   const lista=(AHOF==='todas'?ctas.flatMap(c=>ahoMovsDe(c.id)).filter(x=>!(x.a.tipo==='pase'&&x.cta===x.a.destino)):ahoMovsDe(AHOF)).sort((x,y)=>(x.a.fecha+x.a.ts)<(y.a.fecha+y.a.ts)?-1:1);
