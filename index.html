@@ -600,8 +600,10 @@ function snapActual(){return{cuentas:clone(ADM.cuentas),otros:clone(ADM.otros),c
 /* porcentajes de un medio: {conceptoId: %} */
 function pctDe(m){return m.pct||{com:n(m.com),imp:n(m.imp)}}
 function conceptosDe(snap){return snap.conceptos&&snap.conceptos.length?snap.conceptos:[{id:'com',nombre:'Comisión'},{id:'imp',nombre:'Impuestos'},{id:'iibb',nombre:'Ingresos brutos'}]}
-function pctTotal(m,snap){const P=pctDe(m);return conceptosDe(snap||{conceptos:ADM.conceptos}).reduce((a,c)=>a+n(P[c.id]),0)}
-function aplicarDesc(v,m,snap,r){const P=pctDe(m);let t=0;conceptosDe(snap).forEach(c=>{const x=v*n(P[c.id])/100;if(!x)return;t+=x;r.descC[c.nombre]=(r.descC[c.nombre]||0)+x});return t}
+function pctTotal(m,snap,iva){const P=pctDe(m);return conceptosDe(snap||{conceptos:ADM.conceptos}).reduce((a,c)=>a+n(P[c.id]),0)+(iva?n(P.com)*IVA_COM/100:0)}
+/* bancos: la comisión se cobra más IVA */
+const IVA_COM=21;
+function aplicarDesc(v,m,snap,r,iva){const P=pctDe(m);let t=0;conceptosDe(snap).forEach(c=>{const x=v*n(P[c.id])/100;if(!x)return;t+=x;r.descC[c.nombre]=(r.descC[c.nombre]||0)+x});if(iva){const x=v*n(P.com)/100*IVA_COM/100;if(x){t+=x;r.descC['IVA de la comisión']=(r.descC['IVA de la comisión']||0)+x}}return t}
 /* rotura de un empleado: no es venta ni sale de la caja; solo se le descuenta del sueldo */
 const esRotEmp=x=>x&&!x.antId&&x.tipo==='rotura';
 function calc(c,snap){
@@ -612,7 +614,7 @@ function calc(c,snap){
   snap.cuentas.forEach(ct=>{
     const o={bruto:0,desc:0,neto:0,det:[]};
     const arr=(c.pos&&c.pos[ct.id])||[];
-    for(let i=0;i<ct.posnets;i++){const p=arr[i]||{};ct.medios.forEach(m=>{const v=n(p[m.id]);if(!v)return;const d=aplicarDesc(v,m,snap,r);o.bruto+=v;o.desc+=d;o.det.push({nombre:`Posnet ${i+1} · ${m.nombre}`,bruto:v,desc:d});const k=ct.nombre+' · '+m.nombre;r.medios[k]=(r.medios[k]||0)+v})}
+    for(let i=0;i<ct.posnets;i++){const p=arr[i]||{};ct.medios.forEach(m=>{const v=n(p[m.id]);if(!v)return;const d=aplicarDesc(v,m,snap,r,true);o.bruto+=v;o.desc+=d;o.det.push({nombre:`Posnet ${i+1} · ${m.nombre}`,bruto:v,desc:d});const k=ct.nombre+' · '+m.nombre;r.medios[k]=(r.medios[k]||0)+v})}
     r.cuentas[ct.id]=o;
   });
   snap.otros.forEach(ot=>{
@@ -4081,7 +4083,7 @@ function admConfig(){
   ${ADM.conceptos.map((c,i)=>`<div class="row" style="margin-bottom:8px"><input class="in" style="flex:1" value="${esc(c.nombre)}" onchange="ADM.conceptos[${i}].nombre=this.value;render()"><button class="btn sm o" onclick="if(confirm('¿Eliminar ${esc(c.nombre).replace(/'/g,'')}?')){ADM.conceptos.splice(${i},1);render()}">✕</button></div>`).join('')}
   <button class="btn sm o" onclick="ADM.conceptos.push({id:uid(),nombre:'Nuevo impuesto'});render()">+ Agregar comisión o impuesto</button></div>
   ${ADM.cuentas.map((c,i)=>`<div class="card"><div class="row"><input class="in b" style="flex:1;min-width:140px" value="${esc(c.nombre)}" onchange="ADM.cuentas[${i}].nombre=this.value"><label class="sm">Posnets</label><input class="in" style="width:70px" inputmode="numeric" value="${c.posnets}" onchange="ADM.cuentas[${i}].posnets=Math.max(0,parseInt(this.value)||0)"><button class="btn sm o" onclick="if(confirm('¿Eliminar la cuenta?')){ADM.cuentas.splice(${i},1);render()}">🗑</button></div>
-   <div class="tw"><table class="t" style="margin-top:10px"><thead><tr><th>Medio</th>${cabC}<th class="r">Total %</th><th></th></tr></thead><tbody>${c.medios.map((m,j)=>`<tr><td><input class="in" style="min-width:110px" value="${esc(m.nombre)}" onchange="ADM.cuentas[${i}].medios[${j}].nombre=this.value"></td>${pctInput(`cuentas.${i}.medios.${j}`,m)}<td class="r b">${pct(pctTotal(m))}</td><td><button class="btn sm o" onclick="ADM.cuentas[${i}].medios.splice(${j},1);render()">✕</button></td></tr>`).join('')}</tbody></table></div>
+   <div class="tw"><table class="t" style="margin-top:10px"><thead><tr><th>Medio</th>${cabC}<th class="r">Total % <span class="xs mut" style="font-weight:400">(con IVA de la comisión)</span></th><th></th></tr></thead><tbody>${c.medios.map((m,j)=>`<tr><td><input class="in" style="min-width:110px" value="${esc(m.nombre)}" onchange="ADM.cuentas[${i}].medios[${j}].nombre=this.value"></td>${pctInput(`cuentas.${i}.medios.${j}`,m)}<td class="r b">${pct(pctTotal(m,null,true))}</td><td><button class="btn sm o" onclick="ADM.cuentas[${i}].medios.splice(${j},1);render()">✕</button></td></tr>`).join('')}</tbody></table></div>
    <button class="btn sm o" style="margin-top:8px" onclick="ADM.cuentas[${i}].medios.push({id:uid(),nombre:'Nuevo medio',pct:{}});render()">+ Agregar medio de pago</button></div>`).join('')}
   <button class="btn o" style="margin-bottom:16px" onclick="ADM.cuentas.push({id:uid(),nombre:'Nueva cuenta',posnets:1,medios:[{id:'credito',nombre:'Crédito',pct:{}},{id:'debito',nombre:'Débito',pct:{}},{id:'qr',nombre:'QR',pct:{}},{id:'prepaga',nombre:'Prepaga',pct:{}}]});render()">+ Agregar cuenta bancaria</button>
   <div class="card"><h3>Otros medios de cobro</h3><div class="tw"><table class="t"><thead><tr><th>Medio</th><th>Va a</th>${cabC}<th class="r">Total %</th><th></th></tr></thead><tbody>${ADM.otros.map((o,i)=>`<tr><td><input class="in" style="min-width:120px" value="${esc(o.nombre)}" onchange="ADM.otros[${i}].nombre=this.value"></td><td><select class="in" onchange="ADM.otros[${i}].destino=this.value;render()">${CUENTAS_PAGO().map(c=>`<option value="${c.id}" ${c.id===o.destino?'selected':''}>${esc(c.nombre)}</option>`).join('')}</select>${o.destino==='efectivo'?`<div class="xs mut" style="margin-top:6px">La comisión se descuenta de:</div><select class="in" style="margin-top:3px" onchange="ADM.otros[${i}].descDe=this.value">${CUENTAS_PAGO().map(c=>`<option value="${c.id}" ${c.id===(o.descDe||'efectivo')?'selected':''}>${esc(c.nombre)}</option>`).join('')}</select>`:''}</td>${pctInput(`otros.${i}`,o)}<td class="r b">${pct(pctTotal(o))}</td><td><button class="btn sm o" onclick="ADM.otros.splice(${i},1);render()">✕</button></td></tr>`).join('')}</tbody></table></div>
