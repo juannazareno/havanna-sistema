@@ -1203,7 +1203,9 @@ function lecRequeridos(f){const out=[],ah=ahoraHM(),h=hoy(),m=mesDe(f);if(f>h)re
     const desde=ai&&ai.entrada?ai.entrada:i.desde;if(f===h&&ah<masMin(desde,30))return;const k=i.empId+'|'+i.turno;if(ya.has(k))return;ya.add(k);out.push({empId:i.empId,suc:i.suc,turno:i.turno,desde})});
   (D.asi[m]||[]).filter(a=>a.fecha===f).forEach(a=>(a.items||[]).forEach(it=>{if(it.estado==='ausente')return;const e=emp(it.empId);if(!e)return;const k=it.empId+'|'+a.turno;if(ya.has(k))return;
     const desde=it.entrada||it.desde||sucHor(a.suc,a.turno,f).desde;if(f===h&&ah<masMin(desde,30))return;ya.add(k);out.push({empId:it.empId,suc:a.suc,turno:a.turno,desde})}));
-  return out}
+  /* food trucks: el responsable de turno es quien hace el stock, no tiene que leerlo además */
+  const esFT=sid=>{const su=(CFG.sucursales||[]).find(x=>x.id===sid);return!!su&&(su.turnos||[]).length===1&&su.turnos[0]==='Único'&&sid!=='std'};
+  return out.filter(r=>{if(!esFT(r.suc))return true;const mismos=out.filter(x=>x.suc===r.suc&&x.turno===r.turno);if(mismos.length===1)return false;const enc=encargadoTurno(f,r.suc,r.turno);return enc.empId!==r.empId})}
 const lecVigente=(l,u)=>l&&(!u||l.stkId===u.id);
 async function encLeido(){const f=fechaOp(),u=stkPrevio(S.suc,f,S.turno);const x={id:lecId(S.empId,f,S.turno),empId:S.empId,nombre:S.nombre,suc:S.suc,fecha:f,turno:S.turno,stkId:u?u.id:'',estrellas:estActivas(S.suc).map(e=>e.prodId),ts:new Date().toISOString()};
   const m=mesDe(f);await safe(()=>DB.set('lec:'+m+':'+x.id,x),'Quedó registrado que lo leíste');const arr=D.lec[m]||(D.lec[m]=[]);const i=arr.findIndex(a=>a.id===x.id);if(i>=0)arr[i]=x;else arr.push(x);render()}
