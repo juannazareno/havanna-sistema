@@ -2329,15 +2329,16 @@ let DECF=null;
 const decValor=d=>d.valorUnit!=null&&d.valorUnit!==''?Math.round(n(d.cant)*n(d.valorUnit)*100)/100:null;
 function ultimoPrecio(prodId,nombre){let best=null;D.ocp.filter(o=>!o.cancelado).forEach(o=>(o.items||[]).forEach(i=>{if(n(i.precio)>0&&((prodId&&i.prodId===prodId)||(!prodId&&i.nombre===nombre))){if(!best||o.fecha>best.f)best={f:o.fecha,p:n(i.precio)}}}));
   if(!best)D.prv.forEach(p=>(p.lista||[]).forEach(l=>{if(prodId&&l.prodId===prodId&&n(l.precio))best={f:'',p:n(l.precio)}}));return best?best.p:null}
-function decNuevo(){DECF={prodId:'',cant:'1',motivo:'Vencido',det:'',fotos:[]};render()}
+function decNuevo(){DECF={prodId:'',otro:'',cant:'1',motivo:'Vencido',det:'',fotos:[]};render()}
 async function decFoto(inp){for(const f of inp.files)DECF.fotos.push(await compress(f));render()}
-async function decGuardar(){return unaVez('dec',async()=>{const x=DECF,p=prodDe(x.prodId);if(!p)return toast('Elegí el producto',true);const cant=n(parseNum(String(x.cant)));if(!(cant>0))return toast('Poné la cantidad',true);
+async function decGuardar(){return unaVez('dec',async()=>{const x=DECF,otro=x.prodId==='__otro',p=otro?{id:'',nombre:String(x.otro||'').trim()}:prodDe(x.prodId);if(!p||!p.nombre)return toast(otro?'Escribí qué producto es (ej.: Café)':'Elegí el producto',true);const cant=n(parseNum(String(x.cant)));if(!(cant>0))return toast('Poné la cantidad',true);
   if(!x.fotos.length)return toast('Sacale al menos una foto a lo decomisado',true);if(x.motivo==='Otro'&&!x.det.trim())return toast('Contá qué pasó',true);
   await safe(async()=>{const fotos=[];for(const d of x.fotos)fotos.push(await saveFoto(d));const d={id:uid(),suc:S.suc,fecha:fechaOp(),turno:S.turno,por:S.nombre,empId:S.empId||'',prodId:p.id,nombre:p.nombre,cant,motivo:x.motivo,det:x.det.trim(),fotos,valorUnit:null,ts:new Date().toISOString()};
     await DB.set('dec:'+d.id,d);D.dec.unshift(d);await enviarMsg('compras',`Decomiso en ${suc(d.suc).nombre} (${d.turno}): ${d.cant} × ${d.nombre} · ${d.motivo}${d.det?' · '+d.det:''}. Ponele el valor en Compras → Decomisos.`)},'Decomiso cargado');DECF=null;render()})}
 function encDecomisos(){if(DECF){const ps=cartaProds(S.suc);
     return`<div class="row" style="margin-bottom:12px"><button class="btn o sm" onclick="DECF=null;render()">← Decomisos</button><h2 class="sec sp" style="margin:0">Cargar decomiso</h2></div>
-    <div class="card"><div class="grid g2"><div class="fld"><label class="f">Producto</label><select class="in" onchange="DECF.prodId=this.value"><option value="">— elegí —</option>${CARTA.cats.map(c=>{const xs=ps.filter(p=>p.cat===c);return xs.length?`<optgroup label="${esc(c)}">${xs.map(p=>`<option value="${p.id}" ${DECF.prodId===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}</optgroup>`:''}).join('')}</select></div>
+    <div class="card"><div class="grid g2"><div class="fld"><label class="f">Producto</label><select class="in" onchange="DECF.prodId=this.value;render()"><option value="">— elegí —</option><option value="__otro" ${DECF.prodId==='__otro'?'selected':''}>☕ Café, leche u otro que no está en la lista</option>${CARTA.cats.map(c=>{const xs=ps.filter(p=>p.cat===c);return xs.length?`<optgroup label="${esc(c)}">${xs.map(p=>`<option value="${p.id}" ${DECF.prodId===p.id?'selected':''}>${esc(p.nombre)}</option>`).join('')}</optgroup>`:''}).join('')}</select></div>
+     ${DECF.prodId==='__otro'?`<div class="fld"><label class="f">¿Qué producto?</label><input class="in" list="dec-otros" value="${esc(DECF.otro||'')}" oninput="DECF.otro=this.value" placeholder="Ej.: Café preparado, Café en grano, Leche"><datalist id="dec-otros">${['Café preparado','Café en grano','Leche','Medialuna','Torta'].map(o=>`<option value="${o}">`).join('')}</datalist></div>`:''}
      <div class="fld"><label class="f">Cantidad</label><input class="in" inputmode="decimal" value="${esc(DECF.cant)}" oninput="DECF.cant=this.value"></div>
      <div class="fld"><label class="f">Motivo</label><select class="in" onchange="DECF.motivo=this.value">${DEC_MOT.map(m=>`<option ${DECF.motivo===m?'selected':''}>${m}</option>`).join('')}</select></div>
      <div class="fld"><label class="f">Qué pasó (opcional${DECF.motivo==='Otro'?', obligatorio con "Otro"':''})</label><input class="in" value="${esc(DECF.det)}" oninput="DECF.det=this.value"></div></div>
@@ -4969,5 +4970,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-06h -->
+<!-- version 2026-11-06i -->
 </html>
