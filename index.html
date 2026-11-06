@@ -1142,12 +1142,17 @@ function stkPrevio(sid,f,t){const all=Object.values(D.stk).flat().filter(x=>x.su
 function stkUltimo(sid){const all=Object.values(D.stk).flat().filter(x=>x.suc===sid&&x.confirmado);return all.sort((a,b)=>a.fecha!==b.fecha?(a.fecha<b.fecha?1:-1):TUR_ORD(b.turno)-TUR_ORD(a.turno))[0]}
 let STKP=null;function stkGuardar(){if(STK&&STK.confirmado&&STKCONF_OK!==STK.id)return;STKCONF_OK=null;if(!STK)return;editando();clearTimeout(STKT);const x=STK,m=mesDe(x.fecha);const arr=D.stk[m]||(D.stk[m]=[]);const i=arr.findIndex(a=>a.id===x.id);if(i>=0)arr[i]=x;else arr.push(x);STKP=()=>DB.set('stk:'+m+':'+x.id,x).catch(e=>toast('No se pudo guardar: '+errTxt(e),true));STKT=setTimeout(()=>{const f=STKP;STKP=null;if(f)f()},500)}
 function stkRestoHay(){if(!STK)return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const ps=cartaProds(S.suc),k=ps.filter(p=>!(STK.items[p.id]||{}).v).length;if(!k)return;if(!confirm(`Se marcan ${k} producto(s) como Hay. Antes fijate de haber marcado lo que no hay o queda poco. ¿Seguir?`))return;ps.forEach(p=>{const it=STK.items[p.id]||(STK.items[p.id]={});if(!it.v)it.v='si'});stkGuardar();render()}
-function stkMarca(pid,v){if(!STK)return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const it=STK.items[pid]||(STK.items[pid]={});it.v=v;if(v!=='poco')it.cant='';stkGuardar();render()}
-function stkCampo(pid,k,v){if(!STK)return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const it=STK.items[pid]||(STK.items[pid]={});it[k]=v;stkGuardar()}
-function stkVenc(pid,v){if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);if(v){const y=+v.slice(0,4),ya=+hoy().slice(0,4);if(y<ya-1||y>ya+3){toast('Revisá el año de la fecha de vencimiento',true);return render()}}stkCampo(pid,'venc',v);render()}
+/* el stock se carga al CERRAR el turno: recién en la última hora del turno se puede marcar */
+function stkFin(f,sid,t){const its=griItems(f,sid,t),h=sucHor(sid,t,f)||{};return its.reduce((v,i)=>i.hasta&&hm(i.hasta)>hm(v)?i.hasta:v,h.hasta||'23:00')}
+function stkDesde(f,sid,t){const fin=stkFin(f,sid,t),m=hm(fin)<5*60?hm(fin)+24*60:hm(fin),d=m-60;return pad(Math.floor(d/60)%24)+':'+pad(d%60)}
+function stkHabil(f,sid,t){if(location.protocol==='file:'&&/[?&]stklibre=1/.test(location.search))return true;if(f<hoy())return true;const ah=ahoraHM(),d=stkDesde(f,sid,t);if(hm(ah)<5*60)return true;return hm(d)<5*60?false:hm(ah)>=hm(d)}
+function stkBloqHora(){if(!STK||STK.confirmado)return false;if(stkHabil(STK.fecha,STK.suc,STK.turno))return false;toast('El stock se carga al cerrar el turno: desde las '+stkDesde(STK.fecha,STK.suc,STK.turno),true);return true}
+function stkMarca(pid,v){if(!STK)return;if(stkBloqHora())return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const it=STK.items[pid]||(STK.items[pid]={});it.v=v;if(v!=='poco')it.cant='';stkGuardar();render()}
+function stkCampo(pid,k,v){if(!STK)return;if(stkBloqHora())return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const it=STK.items[pid]||(STK.items[pid]={});it[k]=v;stkGuardar()}
+function stkVenc(pid,v){if(stkBloqHora())return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);if(v){const y=+v.slice(0,4),ya=+hoy().slice(0,4);if(y<ya-1||y>ya+3){toast('Revisá el año de la fecha de vencimiento',true);return render()}}stkCampo(pid,'venc',v);render()}
 function stkTodoHay(cat){if(!STK)return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);cartaProds(S.suc).filter(p=>p.cat===cat).forEach(p=>{const it=STK.items[p.id]||(STK.items[p.id]={});if(!it.v)it.v='si'});stkGuardar();render()}
 let STKCONF_OK=null;
-async function stkConfirmar(stk){if(!STK)return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const ps=cartaProds(S.suc),falt=ps.filter(p=>!(STK.items[p.id]||{}).v);if(falt.length)return toast(`Faltan ${falt.length} productos por marcar`,true);
+async function stkConfirmar(stk){if(!STK)return;if(stkBloqHora())return;if(STK&&STK.confirmado)return toast('El stock ya está confirmado: no se puede modificar',true);const ps=cartaProds(S.suc),falt=ps.filter(p=>!(STK.items[p.id]||{}).v);if(falt.length)return toast(`Faltan ${falt.length} productos por marcar`,true);
   const sinCant=ps.filter(p=>(STK.items[p.id]||{}).v==='poco'&&!String((STK.items[p.id]||{}).cant||'').trim());if(sinCant.length){sinCant.forEach(p=>STKV['c'+p.id]=1);render();return toast(`Poné cuánto queda en: ${sinCant.map(p=>p.nombre).slice(0,3).join(', ')}${sinCant.length>3?' y '+(sinCant.length-3)+' más':''}`,true)}
   const noHay=ps.filter(p=>(STK.items[p.id]||{}).v==='no');if(noHay.length&&!stk){modal('Antes de confirmar',`<div class="al w" style="font-size:15px"><span><b>Confirmá que les pusiste el sticker de "No disponible" a las cartas físicas del local</b> a estos productos:</span></div><div class="sm" style="margin:10px 0;line-height:1.7">${noHay.map(p=>'• '+esc(p.nombre)).join('<br>')}</div><div class="row"><button class="btn o" onclick="closeModal()">Todavía no</button><span class="sp"></span><button class="btn y" onclick="closeModal();stkConfirmar(true)">Sí, ya les puse el sticker</button></div>`);return}
   STK.confirmado={por:S.nombre,ts:new Date().toISOString(),...(noHay.length?{stickers:true}:{})};
@@ -1155,6 +1160,7 @@ async function stkConfirmar(stk){if(!STK)return;if(STK&&STK.confirmado)return to
 function encStock(){if(STKF&&STKF!==hoy()&&STKF!==sumDias(hoy(),-1))STKF=null;const f=STKF||fechaOp(),ps=cartaProds(S.suc);
   if(!STK||STK.id!==stkId(f,S.suc,S.turno)){const ex=stkDe(f,S.suc,S.turno);STK=ex?clone(ex):{id:stkId(f,S.suc,S.turno),fecha:f,suc:S.suc,turno:S.turno,items:{},por:S.nombre}}
   if(!ps.length)return`<h2 class="sec">Stock del turno</h2><div class="empty">Esta sucursal todavía no tiene productos en la carta. Los carga Compras.</div>`;
+  if(!STK.confirmado&&!stkHabil(f,S.suc,S.turno)){const d=stkDesde(f,S.suc,S.turno);return`<h2 class="sec">Stock del turno · ${esc(S.turno)} · ${fFecha(f)}</h2><div class="card" style="text-align:center;padding:28px 18px"><div style="font-size:40px">🕘</div><h3 style="margin:8px 0">El stock se carga al CERRAR el turno</h3><p>Podés empezar a marcarlo desde las <b style="font-size:20px">${d}</b>.</p><p class="sm mut">Es lo que van a leer los mozos del turno siguiente, por eso tiene que ser lo que queda al final. Sin el stock confirmado no se puede enviar el cierre de caja.</p></div>`}
   const hechos=ps.filter(p=>(STK.items[p.id]||{}).v).length,pct=Math.round(hechos/ps.length*100);
   const cats=CARTA.cats.filter(c=>ps.some(p=>p.cat===c));const h=hoy();
   const bloq=!!STK.confirmado;const VN={si:['Hay','p-ok'],poco:['Poco','p-w'],no:['No hay','p-bad']};
@@ -4829,5 +4835,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-06b -->
+<!-- version 2026-11-06c -->
 </html>
