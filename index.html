@@ -256,7 +256,7 @@ if(!LOCAL){try{sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){console.error(e)
 const MEM={};const LS={getItem(k){try{return localStorage.getItem(k)}catch(e){return k in MEM?MEM[k]:null}},setItem(k,v){try{localStorage.setItem(k,v)}catch(e){MEM[k]=v}},removeItem(k){try{localStorage.removeItem(k)}catch(e){delete MEM[k]}},keys(){try{const a=[];for(let i=0;i<localStorage.length;i++)a.push(localStorage.key(i));return a}catch(e){return Object.keys(MEM)}}};
 const errTxt=e=>e&&(e.message||e.msg||e.error_description||e.hint||e.code)?(e.message||e.msg||e.error_description||e.hint||e.code):String(e);
 window.addEventListener('error',e=>{console.error(e.error||e.message)});
-window.addEventListener('unhandledrejection',e=>{console.error('Error: '+errTxt(e.reason));try{toast('Error: '+errTxt(e.reason),true)}catch(x){}});
+window.addEventListener('unhandledrejection',e=>{const r=e.reason,ev=r&&typeof Event!=='undefined'&&r instanceof Event;const t=ev?'No se pudo cargar un archivo o una foto. Probá de nuevo.':errTxt(r);console.error('Error: '+t);try{toast(ev?t:'Error: '+t,true)}catch(x){}});
 /* historial de cambios: cada alta, modificación o baja queda registrada con quién y cuándo */
 const AUD={raw:{},
   prev(k){if(this.raw[k]){try{return JSON.parse(this.raw[k])}catch(e){}}return this.antes(k)},
@@ -405,7 +405,7 @@ function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;
 
 /* fotos */
 const FOTO={};
-function compress(file,max=1400,q=.7){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;const s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);res(cv.toDataURL('image/jpeg',q))};img.onerror=rej;img.src=fr.result};fr.onerror=rej;fr.readAsDataURL(file)})}
+function compress(file,max=1400,q=.7){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;const s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);res(cv.toDataURL('image/jpeg',q))};img.onerror=()=>rej(new Error('No se pudo leer la foto'+(file&&file.name?' ('+file.name+')':'')+'. Probá sacarla de nuevo o elegí otra (en iPhone: Ajustes → Cámara → Formatos → "Más compatible").'));img.src=fr.result};fr.onerror=()=>rej(new Error('No se pudo leer la foto. Probá sacarla de nuevo o elegí otra.'));fr.readAsDataURL(file)})}
 const esPdf=f=>f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''));
 function leerArchivo(file){if(!esPdf(file))return compress(file);if(file.size>5*1024*1024)return Promise.reject(new Error('El PDF pesa más de 5 MB'));return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).replace(/^data:[^;,]*/,'data:application/pdf'));fr.onerror=rej;fr.readAsDataURL(file)})}
 const datoPdf=d=>typeof d==='string'&&d.startsWith('data:application/pdf');
@@ -2264,7 +2264,7 @@ let PPF=null;
 /* proveedores locales: los lunes y martes se paga todo lo que LLEGÓ de lunes a domingo de la semana anterior (o antes) */
 const ppCorte=()=>lunesDe(hoy());
 const ppPedidoF=d=>(d.o.fecha||d.r.fecha||'');const ppLlegoF=d=>(d.r.fecha||d.o.fecha||'');
-const ppVence=(p,d)=>{if(!p)return true;if(p.tipo==='local')return ppLlegoF(d)<ppCorte();if(p.tipo==='franquicia'){const v=ocVenc(d.o);return!v||['vencida','mora'].includes(vencEst(d.o))}return true};
+const ppVence=(p,d)=>{if(!p)return true;if(p.tipo==='local')return ppLlegoF(d)<ppCorte();if(p.tipo==='franquicia'){const v=ocVenc(d.o);return!v||v<=hoy()||['vencida','mora'].includes(vencEst(d.o))}return true};
 const ppProxLunes=()=>sumDias(ppCorte(),7);
 function ppAbrir(pid){const ds=provDeuda(pid),pv=provDe(pid);PPF={pid,sel:{},nc:{},monto:'',motivo:'',cta:'',mes:'',modo:'parcial'};if(!pv||pv.tipo!=='franquicia')ds.forEach(d=>{if(ppVence(pv,d))PPF.sel[d.o.id+'|'+d.ix]=true});const p=provDe(pid);PPF.cta=p.pago==='efectivo'?'efectivo':((ADM.cuentas[0]||{}).id||'efectivo');render()}
 function ppTotalSel(){return Math.round(provDeuda(PPF.pid).filter(d=>PPF.sel[d.o.id+'|'+d.ix]).reduce((t,d)=>t+d.imp,0)*100)/100}
@@ -4990,9 +4990,9 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
   if(S){view='app';tab=TAB_INI[S.role]||'resumen';await refresh();render();if(S.role==='enc')startAlarms()}
   else render();
   setInterval(()=>{if(!S&&view==='home'){HOMEBD_T=0;homeBadges()}},90000);
-  setInterval(async()=>{if(S&&!CD&&Date.now()-ULT_EDIT>5000&&!$('#modal').classList.contains('on')&&document.visibilityState==='visible'&&!document.activeElement.matches('input,textarea,select')){await refresh();render()}},90000);
+  setInterval(async()=>{if(S&&!CD&&Date.now()-ULT_EDIT>5000&&!($('#modal')&&$('#modal').classList.contains('on'))&&document.visibilityState==='visible'&&!(document.activeElement&&document.activeElement.matches&&document.activeElement.matches('input,textarea,select'))){await refresh();render()}},90000);
 })();
 </script>
 </body>
-<!-- version 2026-11-09a -->
+<!-- version 2026-11-09b -->
 </html>
