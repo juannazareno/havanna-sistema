@@ -1698,7 +1698,9 @@ function encTabs(){
 function encBody(){
   switch(tab){case'calidad':return encCalidad();case'mant':return encMant();case'limpieza':return encLimpieza();case'decomisos':return encDecomisos();case'stock':return encStock();case'personal':return encPersonal();case'cierre':return encCierre();case'pedidos':return encPedidos();case'anticipos':return encAnticipos();case'certificados':return encCert();case'mensajes':return mensajesHTML();default:return encInicio()}
 }
-function recordatoriosHoy(){const d=new Date().getDay();return CFG.recordatorios.filter(r=>(!r.sucursales||!r.sucursales.length||r.sucursales.includes(S.suc))&&(!r.dias||!r.dias.length||r.dias.includes(d))&&(!r.turno||r.turno==='Todos'||r.turno===S.turno)).sort((a,b)=>a.hora<b.hora?-1:1)}
+const CART_SUCS=['rep','ill','vv'];
+const REC_FIJOS=[{id:'cart-apagar',hora:'07:30',texto:'💡 Apagar carteles',turno:'Mañana',sucursales:CART_SUCS,dias:[],fijo:true},{id:'cart-prender',hora:'18:00',texto:'💡 Prender carteles',turno:'Tarde',sucursales:CART_SUCS,dias:[],fijo:true}];
+function recordatoriosHoy(){const d=new Date().getDay();return [...REC_FIJOS,...CFG.recordatorios].filter(r=>(!r.sucursales||!r.sucursales.length||r.sucursales.includes(S.suc))&&(!r.dias||!r.dias.length||r.dias.includes(d))&&(!r.turno||r.turno==='Todos'||r.turno===S.turno)).sort((a,b)=>a.hora<b.hora?-1:1)}
 function encInicio(){
   const recs=recordatoriosHoy(),now=ahora();
   const m=mesDe(hoy()),f=hoy();
@@ -3373,7 +3375,17 @@ function gResumen(){const d=grsDatos(),ult=D.grs[0];
 function gerencia(){const segs=[['hoy','Hoy'],['mes','Métricas del mes'],['resp','Pendientes por área'],['bit','Bitácora'],['res','Resumen a dueños']];
   return`<div class="row" style="margin-bottom:12px;flex-wrap:wrap"><h2 class="sec sp" style="margin:0">Gerencia · control diario</h2><span class="sm mut">${dNom(hoy())} ${fFecha(hoy())} · ${ahoraHM()}</span></div>
   <div class="seg" style="margin-bottom:14px;flex-wrap:wrap">${segs.map(([k,l])=>`<button class="${GERV===k?'on':''}" onclick="GERV='${k}';render()">${l}</button>`).join('')}</div>
-  ${GERV==='mes'?gMes():GERV==='resp'?gResp():GERV==='bit'?gBitacora():GERV==='res'?gResumen():gHoy()}`}
+  ${GERV==='mes'?gMes():GERV==='resp'?gResp():GERV==='bit'?gBitacora():GERV==='res'?gResumen():cartHTML()+gHoy()}`}
+let CARTD={ts:0,d:{},cargando:false};
+const CART_DESDE='2026-11-10';
+function cartDias(){const L=[];for(let i=0;i<7;i++){const f=sumDias(hoy(),-i);if(f>=CART_DESDE)L.push(f)}return L}
+async function cartCargar(){if(CARTD.cargando)return;CARTD.cargando=true;try{const d={};for(const f of cartDias()){const L=await DB.list('rdo:'+f+'|');L.filter(x=>REC_FIJOS.some(r=>r.id===x.recId)).forEach(x=>{d[f+'|'+x.suc+'|'+x.recId]=x})}CARTD={ts:Date.now(),d,cargando:false};if(view==='app'&&tab==='gerencia'&&!($('#modal')&&$('#modal').classList.contains('on')))render()}catch(e){CARTD.cargando=false}}
+function cartHTML(){if(Date.now()-CARTD.ts>60000)setTimeout(cartCargar,30);const h=hoy(),now=ahora();
+  const cel=(f,sid,r)=>{const x=CARTD.d[f+'|'+sid+'|'+r.id],v=r.id==='cart-apagar'?'Apagó':'Prendió';if(x){const tarde=x.hora>sumMin(r.hora,30);return`<div class="xs" style="color:${tarde?'#b45309':'#2e7d4f'}">✓ ${v} ${esc(x.hora)} · ${esc(x.por||'')}${tarde?' (tarde)':''}</div>`}
+    if(f===h&&now<r.hora)return`<div class="xs mut">${v.replace('ó','ar')} · ${r.hora}</div>`;if(!CARTD.ts)return'<div class="xs mut">…</div>';return`<div class="xs" style="color:#b42318;font-weight:600">✗ Sin marcar ${r.id==='cart-apagar'?'apagar':'prender'}</div>`};
+  return`<div class="card"><h3>💡 Carteles</h3><p class="sm mut" style="margin-top:-6px">Al responsable de la mañana le suena la alarma a las 07:30 para apagarlos y al de la tarde a las 18:00 para prenderlos. Acá se ve quién lo marcó y a qué hora. En naranja, si se marcó más de 30 min tarde.</p>
+  <div class="tw"><table class="t"><thead><tr><th>Día</th>${CART_SUCS.map(id=>`<th>${esc(suc(id).nombre)}</th>`).join('')}</tr></thead><tbody>${cartDias().map(f=>`<tr><td class="sm"><b>${f===h?'Hoy':dNom(f)}</b> ${fFecha(f).slice(0,5)}</td>${CART_SUCS.map(id=>`<td>${REC_FIJOS.map(r=>cel(f,id,r)).join('')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`}
+function sumMin(hm,m){const[a,b]=hm.split(':').map(Number),t=a*60+b+m;return String(Math.floor(t/60)%24).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
 /* ---- vistas para el gerente: sin ganancia, resultado, retiros ni margen ---- */
 function gerDifCajaHTML(m){const L=(D.cie[m]||[]).filter(c=>c.estado==='confirmado'&&c.conc).map(c=>({c,d:calc(c).dif})).filter(x=>x.d!=null&&Math.abs(x.d)>=1).sort((a,b)=>(a.c.fecha+a.c.turno)<(b.c.fecha+b.c.turno)?1:-1);const t=L.reduce((s,x)=>s+x.d,0);
   return`<div class="card"><h3>Diferencias de caja de ${mesNombre(m)}</h3><p class="sm mut" style="margin-top:-6px">Cierres conciliados por Administración con diferencia contra el sistema Havanna.</p>${L.length?`<div class="tw"><table class="t"><thead><tr><th>Fecha</th><th>Sucursal</th><th>Turno</th><th>Cajero/a</th><th class="r">Diferencia</th></tr></thead><tbody>${L.map(x=>`<tr><td class="sm">${fFecha(x.c.fecha)}</td><td class="sm">${esc(suc(x.c.suc).nombre)}</td><td class="sm">${esc(x.c.turno)}</td><td class="sm">${esc(x.c.cajero||'')}</td><td class="r num b ${x.d<0?'dn':'up'}">${money(x.d)} ${x.d<0?'faltante':'sobrante'}</td></tr>`).join('')}<tr class="tot"><td colspan="4">Total</td><td class="r">${money(t)}</td></tr></tbody></table></div>`:'<div class="empty">No hay cierres con diferencia.</div>'}</div>`}
@@ -5033,5 +5045,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-09c -->
+<!-- version 2026-11-10a -->
 </html>
