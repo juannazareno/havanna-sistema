@@ -4349,7 +4349,9 @@ function admConfig(){
   <div class="card"><h3>Categorías de gastos</h3>${listaEditable('ADM.categorias',ADM.categorias)}</div>
   <button class="btn y full" onclick="guardarAdm()">Guardar configuración</button><div style="height:30px"></div>`;
 }
-function listaEditable(ref,arr){return`<div class="fotos" style="gap:6px">${arr.map((x,i)=>`<span class="pill p-n" style="font-size:13px;padding:6px 10px">${esc(x)} <button class="lnk" style="color:var(--red);text-decoration:none" onclick="${ref}.splice(${i},1);render()">✕</button></span>`).join('')}</div><div class="row" style="margin-top:8px"><input class="in" style="flex:1" id="le-${ref.replace('.','-')}" placeholder="Agregar…"><button class="btn sm o" onclick="const v=$('#le-${ref.replace('.','-')}').value.trim();if(v){${ref}.push(v);render()}">Agregar</button></div>`}
+function listaEditable(ref,arr){const id='le-'+ref.replace('.','-'),k=ref.split('.')[1];return`<div class="fotos" style="gap:6px">${arr.map((x,i)=>`<span class="pill p-n" style="font-size:13px;padding:6px 10px">${esc(x)} <button class="lnk" style="color:var(--red);text-decoration:none" onclick="leOp('${k}','del',${i})">✕</button></span>`).join('')}</div><div class="row" style="margin-top:8px"><input class="in" style="flex:1" id="${id}" placeholder="Agregar…" onkeydown="if(event.key==='Enter'){event.preventDefault();leOp('${k}','add',this.value)}"><button class="btn sm o" onclick="leOp('${k}','add',$('#${id}').value)">Agregar</button></div><p class="xs mut" style="margin-top:4px">Se guarda al instante al agregar o quitar.</p>`}
+async function leOp(k,op,v){return unaVez('le'+k,async()=>{editando();const cur=(ADM[k]||[]).slice();let val;if(op==='add'){val=String(v||'').trim();if(!val)return toast('Escribí el nombre',true);if(cur.some(x=>x.toLowerCase()===val.toLowerCase()))return toast('Ya está en la lista',true)}else val=cur[v];
+  try{await safe(async()=>{const f=await DB.get('adm')||ADM;let L=(f[k]||[]).slice();if(op==='add'){if(!L.some(x=>x.toLowerCase()===val.toLowerCase()))L.push(val)}else L=L.filter(x=>x!==val);f[k]=L;await DB.set('adm',f);ADM[k]=L},op==='add'?'Guardado: '+val:'Quitado: '+val)}catch(e){return}render()})}
 
 /* ===================================================================== DUEÑOS */
 const GER_OCULTO=['resumen','plata','ahorro','control','config','cheques','comp'];
@@ -5045,5 +5047,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-10b -->
+<!-- version 2026-11-10c -->
 </html>
