@@ -3382,7 +3382,7 @@ function cartDias(){const L=[];for(let i=0;i<7;i++){const f=sumDias(hoy(),-i);if
 async function cartCargar(){if(CARTD.cargando)return;CARTD.cargando=true;try{const d={};for(const f of cartDias()){const L=await DB.list('rdo:'+f+'|');L.filter(x=>REC_FIJOS.some(r=>r.id===x.recId)).forEach(x=>{d[f+'|'+x.suc+'|'+x.recId]=x})}CARTD={ts:Date.now(),d,cargando:false};if(view==='app'&&tab==='gerencia'&&!($('#modal')&&$('#modal').classList.contains('on')))render()}catch(e){CARTD.cargando=false}}
 function cartHTML(){if(Date.now()-CARTD.ts>60000)setTimeout(cartCargar,30);const h=hoy(),now=ahora();
   const cel=(f,sid,r)=>{const x=CARTD.d[f+'|'+sid+'|'+r.id],v=r.id==='cart-apagar'?'Apagó':'Prendió';if(x){const tarde=x.hora>sumMin(r.hora,30);return`<div class="xs" style="color:${tarde?'#b45309':'#2e7d4f'}">✓ ${v} ${esc(x.hora)} · ${esc(x.por||'')}${tarde?' (tarde)':''}</div>`}
-    if(f===h&&now<r.hora)return`<div class="xs mut">${v.replace('ó','ar')} · ${r.hora}</div>`;if(!CARTD.ts)return'<div class="xs mut">…</div>';return`<div class="xs" style="color:#b42318;font-weight:600">✗ Sin marcar ${r.id==='cart-apagar'?'apagar':'prender'}</div>`};
+    const vf=r.id==='cart-apagar'?'Apagar':'Prender';if(f===h&&now<r.hora)return`<div class="xs mut">${vf} · ${r.hora}</div>`;if(f==='2026-11-10'&&r.id==='cart-apagar')return'<div class="xs mut">Apagar · empieza mañana</div>';if(!CARTD.ts)return'<div class="xs mut">…</div>';return`<div class="xs" style="color:#b42318;font-weight:600">✗ Sin marcar ${r.id==='cart-apagar'?'apagar':'prender'}</div>`};
   return`<div class="card"><h3>💡 Carteles</h3><p class="sm mut" style="margin-top:-6px">Al responsable de la mañana le suena la alarma a las 07:30 para apagarlos y al de la tarde a las 18:00 para prenderlos. Acá se ve quién lo marcó y a qué hora. En naranja, si se marcó más de 30 min tarde.</p>
   <div class="tw"><table class="t"><thead><tr><th>Día</th>${CART_SUCS.map(id=>`<th>${esc(suc(id).nombre)}</th>`).join('')}</tr></thead><tbody>${cartDias().map(f=>`<tr><td class="sm"><b>${f===h?'Hoy':dNom(f)}</b> ${fFecha(f).slice(0,5)}</td>${CART_SUCS.map(id=>`<td>${REC_FIJOS.map(r=>cel(f,id,r)).join('')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`}
 function sumMin(hm,m){const[a,b]=hm.split(':').map(Number),t=a*60+b+m;return String(Math.floor(t/60)%24).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
@@ -5045,5 +5045,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-10a -->
+<!-- version 2026-11-10b -->
 </html>
