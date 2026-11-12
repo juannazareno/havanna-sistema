@@ -3349,7 +3349,7 @@ function gMes(){const h=hoy(),m=SEL.mes||mesDe(h),esAct=m===mesDe(h),dia=esAct?N
   ${sec('Calidad','calidad',gKpi('Puntaje de las visitas',pl!=null?pl:'—',`producto ${pp!=null?pp:'—'} · ${audM.length} visitas`,pl!=null&&pl<75?'rojo':pl!=null&&pl<85?'amarillo':'verde')+gKpi('Video del café a tiempo',gPctTxt(cA,cT),`salió bien ${gPctTxt(cOk,cRev)}`,cT&&cA/cT<.8?'rojo':cT&&cA/cT<.95?'amarillo':'verde')+gKpi('Fallas abiertas',falAb.length,`${falV.length} vencidas`,falV.length?'rojo':falAb.length?'amarillo':'verde')+gKpi('Reclamos de clientes',recM.length,`${recAb.length} sin resolver`,recAb.length?'amarillo':'verde')
     +gKpi('Planes de acción abiertos',pacAb.length,`${pacAb.filter(p=>p.estado==='falta').length} sin cargar`,pacAb.some(p=>['falta','vencido'].includes(pacEstado(p)))?'rojo':'')+gKpi('Local más tiempo sin visita',maxSV+' días','',maxSV>7?'rojo':'verde')+gKpi('Rendiciones de Calidad pendientes',renPendientes().length,'',renPendientes().length?'amarillo':'verde'))}
   ${sec('Mantenimiento','mant',gKpi('Tareas pendientes',mP.length,`${mP.filter(t=>t.urg==='alta').length} urgentes`)+gKpi('Vencidas',mV.length,'',mV.length?'rojo':'verde')+gKpi('Rutina de esta semana',gPctTxt(rs.ok,rs.tot),`${rs.ok} de ${rs.tot}`,rs.tot&&rs.ok/rs.tot<.5&&Number(h.slice(8))&&new Date(h+'T12:00:00').getDay()>=4?'rojo':'')+gKpi('Gasto de mantenimiento',money(gMant),'pagado y rendido en el mes'))}
-  ${sec('Administración','maletin',gKpi('Cierres para confirmar',sinConf,'',sinConf>3?'amarillo':'verde')+gKpi('Gastos fijos sin pagar',fijPend.length,esGer()?'':money(gSum(fijPend.map(e=>e.saldo||0))),fijPend.length?'amarillo':'verde')+gKpi('Facturas que faltan',facF,'',facF?'amarillo':'verde')+gKpi('Mantenimiento por pagar',D.mpg.filter(p=>p.estado==='pendiente').length+D.mrd.filter(r=>r.estado==='enviada').length,'pagos y rendiciones'))}`}
+  ${sec('Administración','maletin',gKpi('Cierres para confirmar',sinConf,'',sinConf>3?'amarillo':'verde')+(esGer()?'':gKpi('Gastos fijos sin pagar',fijPend.length,money(gSum(fijPend.map(e=>e.saldo||0))),fijPend.length?'amarillo':'verde'))+gKpi('Facturas que faltan',facF,'',facF?'amarillo':'verde')+gKpi('Mantenimiento por pagar',D.mpg.filter(p=>p.estado==='pendiente').length+D.mrd.filter(r=>r.estado==='enviada').length,'pagos y rendiciones'))}`}
 /* ---- pendientes por responsable ---- */
 function gResp(){const f=hoy(),L=CFG.sucursales.filter(s=>s.id!=='std').map(gHoySuc);
   const R=[['Responsables de turno','tienda',L.flatMap(x=>x.it.filter(i=>!['RRHH','Calidad','Compras','Mantenimiento'].includes(i.resp)).map(i=>x.s.nombre+' · '+i.txt))],
@@ -3401,9 +3401,9 @@ function gerDifCajaHTML(m){const L=(D.cie[m]||[]).filter(c=>c.estado==='confirma
 function ownSucursalesGer(){const m=SEL.mes,R=metricas(m),Rp=metricas(mesPrev(m)),CL=costoLaboralMes(m);
   return`${cabMes('Sucursales')}
   ${gerDifCajaHTML(m)}
-  <div class="card"><div class="tw"><table class="t"><thead><tr><th>Sucursal</th><th class="r">Venta</th><th class="r">vs mes anterior</th><th class="r">Comensales</th><th class="r">Ticket</th><th class="r">Comisiones</th><th class="r">Gastos propios</th><th class="r">Gastos de caja y vales</th><th class="r">Costo laboral</th></tr></thead><tbody>
-  ${CFG.sucursales.map(s=>{const x=R.porSuc[s.id],p=Rp.porSuc[s.id]||{venta:0},cl=CL.porSuc[s.id]||0;return`<tr><td><b>${esc(s.nombre)}</b></td><td class="r num">${money(x.venta)}</td><td class="r">${p.venta?varPct(x.venta,p.venta).replace(/<span class="mut">.*<\/span>/,''):'—'}</td><td class="r">${x.comensales?x.comensales.toLocaleString('es-AR'):'—'}</td><td class="r num">${x.comensales?money(x.ventaConCom/x.comensales):'—'}</td><td class="r num">${money(x.desc)}</td><td class="r num">${money(x.directos)}</td><td class="r num">${money(x.caja)}</td><td class="r">${x.venta?pct(cl/x.venta*100):'—'}</td></tr>`}).join('')}
-  <tr class="tot"><td>Total</td><td class="r">${money(R.venta)}</td><td class="r">${Rp.venta?varPct(R.venta,Rp.venta).replace(/<span class="mut">.*<\/span>/,''):''}</td><td class="r">${R.comensales.toLocaleString('es-AR')}</td><td class="r">${money(R.ticket)}</td><td class="r">${money(R.desc)}</td><td class="r">${money(Object.values(R.porSuc).reduce((a,x)=>a+x.directos,0))}</td><td class="r">${money(R.gastosCaja+R.roturas+R.anticipos)}</td><td></td></tr></tbody></table></div>
+  <div class="card"><div class="tw"><table class="t"><thead><tr><th>Sucursal</th><th class="r">Venta</th><th class="r">vs mes anterior</th><th class="r">Comensales</th><th class="r">Ticket</th><th class="r">Costo laboral</th></tr></thead><tbody>
+  ${CFG.sucursales.map(s=>{const x=R.porSuc[s.id],p=Rp.porSuc[s.id]||{venta:0},cl=CL.porSuc[s.id]||0;return`<tr><td><b>${esc(s.nombre)}</b></td><td class="r num">${money(x.venta)}</td><td class="r">${p.venta?varPct(x.venta,p.venta).replace(/<span class="mut">.*<\/span>/,''):'—'}</td><td class="r">${x.comensales?x.comensales.toLocaleString('es-AR'):'—'}</td><td class="r num">${x.comensales?money(x.ventaConCom/x.comensales):'—'}</td><td class="r">${x.venta?pct(cl/x.venta*100):'—'}</td></tr>`}).join('')}
+  <tr class="tot"><td>Total</td><td class="r">${money(R.venta)}</td><td class="r">${Rp.venta?varPct(R.venta,Rp.venta).replace(/<span class="mut">.*<\/span>/,''):''}</td><td class="r">${R.comensales.toLocaleString('es-AR')}</td><td class="r">${money(R.ticket)}</td><td></td></tr></tbody></table></div>
   <p class="xs mut">Costo laboral: sueldos, anticipos y vales de cada sucursal sobre su venta.</p></div>
   <div class="card"><h3>Venta por sucursal</h3>${bars(Object.fromEntries(CFG.sucursales.map(s=>[s.nombre,R.porSuc[s.id].venta])))}</div>`}
 function ownReporteGer(){if(!REP){const ms=D.mes.map(x=>x.id).sort();REP={d:ms[0]||mesDe(hoy()),h:mesDe(hoy())}}
@@ -3417,16 +3417,13 @@ function ownReporteGer(){if(!REP){const ms=D.mes.map(x=>x.id).sort();REP={d:ms[0
   <div class="card"><h3>${mesNom(m)}</h3><div class="grid g4" style="margin-top:10px">
    <div class="kpi"><div class="l">Venta</div><div class="v">${money(R.venta)}</div><div class="d">${varPct(R.venta,Rp.venta)}</div></div>
    <div class="kpi"><div class="l">Comensales · ticket</div><div class="v">${R.comensales.toLocaleString('es-AR')}</div><div class="d">ticket ${money(R.ticket)} ${varPct(R.ticket,Rp.ticket)}</div></div>
-   <div class="kpi"><div class="l">Gastos</div><div class="v">${money(R.gastos)}</div><div class="d">${varPct(R.gastos,Rp.gastos)}</div></div>
-   <div class="kpi"><div class="l">Comisiones e impuestos</div><div class="v">${money(R.desc)}</div><div class="d mut">${R.venta?pct(R.desc/R.venta*100)+' de la venta':''}</div></div></div></div>
-  <div class="grid g2"><div class="card"><h3>Gastos por categoría</h3>${bars(R.porCat)}</div>
-   <div class="card"><h3>Vouchers del mes sin cobrar</h3>${vp.length?`<div class="al w">Falta cobrar ${money(vPend)}.</div>`:'<div class="al ok">No hay vouchers pendientes de este mes.</div>'}
+</div></div>
+  <div class="grid g2"><div class="card"><h3>Vouchers del mes sin cobrar</h3>${vp.length?`<div class="al w">Falta cobrar ${money(vPend)}.</div>`:'<div class="al ok">No hay vouchers pendientes de este mes.</div>'}
     ${ds.length?`<h3 style="margin-top:14px">Decomisos del mes</h3><div class="row"><span class="sp">Pérdida valorizada</span><b class="num">${money(decT)}</b></div><div class="xs mut">${ds.length} decomiso(s)</div>`:''}</div></div>
-  ${fp.length?`<div class="card"><h3>Gastos fijos sin pagar · ${fp.length}</h3><details><summary class="sm" style="cursor:pointer;font-weight:600">Ver la lista</summary>${fp.map(e=>`<div class="it"><div class="m">${esc(e.f.nombre)}</div><span class="sm mut">${e.estado==='parcial'?'pagado '+money(e.pagado)+' · ':''}falta ${money(e.saldo)}</span></div>`).join('')}</details></div>`:''}
   <div class="card"><div class="row"><h3 class="sp" style="margin:0">Comparar meses</h3><label class="sm">Desde</label><select class="in" style="width:auto" onchange="REP.d=this.value;render()">${optM(REP.d)}</select><label class="sm">Hasta</label><select class="in" style="width:auto" onchange="REP.h=this.value;render()">${optM(REP.h)}</select></div>
-   <div class="tw" style="margin-top:12px"><table class="t"><thead><tr><th>Mes</th><th class="r">Venta</th><th class="r">Gastos</th><th class="r">Comensales</th><th class="r">Ticket</th></tr></thead><tbody>
-   ${filas.map(x=>`<tr style="cursor:pointer" onclick="setMes('${x.m}')"><td><b>${mesNom(x.m)}</b></td><td class="r num">${money(x.R.venta)}</td><td class="r num">${money(x.R.gastos)}</td><td class="r">${x.R.comensales.toLocaleString('es-AR')}</td><td class="r num">${x.R.ticket?money(x.R.ticket):'—'}</td></tr>`).join('')}
-   <tr class="tot"><td>Total</td><td class="r">${money(tot(x=>x.R.venta))}</td><td class="r">${money(tot(x=>x.R.gastos))}</td><td class="r">${tot(x=>x.R.comensales).toLocaleString('es-AR')}</td><td></td></tr></tbody></table></div></div>`}
+   <div class="tw" style="margin-top:12px"><table class="t"><thead><tr><th>Mes</th><th class="r">Venta</th><th class="r">Comensales</th><th class="r">Ticket</th></tr></thead><tbody>
+   ${filas.map(x=>`<tr style="cursor:pointer" onclick="setMes('${x.m}')"><td><b>${mesNom(x.m)}</b></td><td class="r num">${money(x.R.venta)}</td><td class="r">${x.R.comensales.toLocaleString('es-AR')}</td><td class="r num">${x.R.ticket?money(x.R.ticket):'—'}</td></tr>`).join('')}
+   <tr class="tot"><td>Total</td><td class="r">${money(tot(x=>x.R.venta))}</td><td class="r">${tot(x=>x.R.comensales).toLocaleString('es-AR')}</td><td></td></tr></tbody></table></div></div>`}
 /* ===================================================================== MARKETING */
 const MK_FORMATOS=['Reel de Instagram','Publicación estática de Instagram','Carrusel de Instagram','Historia de Instagram','Video de TikTok','Video de YouTube','Otro'];
 const MK_NIVEL=['Producción ágil','Producción estratégica','Producción especializada'];
@@ -4390,7 +4387,7 @@ async function leOp(k,op,v){return unaVez('le'+k,async()=>{editando();const cur=
   try{await safe(async()=>{const f=await DB.get('adm')||ADM;let L=(f[k]||[]).slice();if(op==='add'){if(!L.some(x=>x.toLowerCase()===val.toLowerCase()))L.push(val)}else L=L.filter(x=>x!==val);f[k]=L;await DB.set('adm',f);ADM[k]=L},op==='add'?'Guardado: '+val:'Quitado: '+val)}catch(e){return}render()})}
 
 /* ===================================================================== DUEÑOS */
-const GER_OCULTO=['resumen','plata','ahorro','control','config','cheques','comp'];
+const GER_OCULTO=['resumen','plata','ahorro','control','config','cheques','comp','gastos'];
 const esGer=()=>!!S&&S.role==='gerente';
 function ownTabs(){
   const ant=D.ant.filter(a=>a.estado==='solicitado').length;
@@ -5083,5 +5080,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-11a -->
+<!-- version 2026-11-12a -->
 </html>
