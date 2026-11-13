@@ -1750,6 +1750,7 @@ function encPersonal(){
       const base=grilla?its.map(i=>({e:emp(i.empId),puesto:i.puesto,desde:i.desde,hasta:i.hasta})).filter(o=>o.e):CFG.empleados.filter(e=>e.activo!==false&&e.suc===S.suc&&(!e.turno||e.turno==='Ambos'||e.turno===S.turno)).map(e=>({e}));
       ASI={id:f+'|'+S.suc+'|'+S.turno,fecha:f,suc:S.suc,turno:S.turno,grilla,items:base.map(o=>{const au=ausAuto(o.e,f);return{empId:o.e.id,nombre:o.e.nombre,puesto:o.puesto||'',desde:o.desde||'',hasta:o.hasta||'',estado:au?'ausente':'',entrada:'',min:0,uniforme:true,mal:false,malTxt:'',motivo:au||''}})}}
   }
+  if(asiSyncGrilla(ASI,f))asiAuto(200);
   const otros=CFG.empleados.filter(e=>e.activo!==false&&!ASI.items.some(i=>i.empId===e.id));
   return`<h2 class="sec">Personal del turno · ${fFecha(f)}</h2><p class="sm mut" style="margin-top:-6px">${ASI.grilla?'Según la grilla de turnos de RRHH. ':''}Marcá a cada uno a medida que llega: quién vino, quién llegó tarde y quién faltó. <b>Se guarda solo</b> y le llega al gerente y a RRHH en el momento. Al que no marques, RRHH lo ve como pendiente.</p>
   <div class="card">${ASI.items.length?ASI.items.map((it,i)=>`<div style="padding:12px 0;border-bottom:1px solid var(--line)">
@@ -1772,6 +1773,13 @@ function asiAdd(){const id=$('#asi-add').value;if(!id)return;const e=emp(id);ASI
 let ASIT=null,ASIQ=Promise.resolve();
 function asiAuto(ms){clearTimeout(ASIT);ASIT=setTimeout(()=>{ASIQ=ASIQ.then(asiGuardar).catch(()=>{})},ms||300)}
 /* une la planilla local con la de la nube: por empleado queda el cambio más nuevo (así no se pisa lo que resolvió RRHH) */
+/* la planilla guardada sigue a la grilla: lo que RRHH agrega, cambia o saca se ve en el momento (sin tocar a quien ya se marcó) */
+function asiSyncGrilla(A,f){if(!A||!griHayDia(f,A.suc))return false;const its=griItems(f,A.suc,A.turno);let ch=false;if(!A.grilla){A.grilla=true;ch=true}
+  its.forEach(g=>{const e=emp(g.empId);if(!e)return;let it=A.items.find(x=>x.empId===g.empId);
+    if(!it){const au=ausAuto(e,f);A.items.push({empId:e.id,nombre:e.nombre,puesto:g.puesto||'',desde:g.desde||'',hasta:g.hasta||'',estado:au?'ausente':'',entrada:'',min:0,uniforme:true,mal:false,malTxt:'',motivo:au||'',ts:new Date().toISOString()});ch=true;return}
+    if(it.cubre)return;['puesto','desde','hasta'].forEach(k=>{if((g[k]||'')!==(it[k]||'')){it[k]=g[k]||'';ch=true;it.ts=new Date().toISOString()}})});
+  const antes=A.items.length;A.items=A.items.filter(x=>x.cubre||x.estado||x.rrhh||its.some(g=>g.empId===x.empId));if(A.items.length!==antes)ch=true;
+  if(ch)A.items.sort((a,b)=>pstOrd(a.puesto)-pstOrd(b.puesto)||((a.desde||'')<(b.desde||'')?-1:1));return ch}
 function asiMerge(loc,nube){if(!nube)return loc;const out=clone(nube);out.items=out.items||[];(loc.items||[]).forEach(li=>{const k=out.items.findIndex(x=>x.empId===li.empId);if(k<0)out.items.push(clone(li));else if((li.ts||'')>(out.items[k].ts||''))out.items[k]=clone(li)});out.items=out.items.filter(x=>loc.items.some(li=>li.empId===x.empId)||x.rrhh);return out}
 const asiNov=x=>!x.avisado&&!x.motivo&&((x.estado==='ausente')||(x.estado==='tarde'&&(x.entrada||n(x.min)))||x.mal&&String(x.malTxt||'').trim().length>2);
 async function asiGuardar(){
@@ -5139,5 +5147,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-13b -->
+<!-- version 2026-11-13c -->
 </html>
