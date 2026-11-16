@@ -4314,6 +4314,24 @@ function admFijos(){
   ${ADM.fijos.map((f,i)=>`<div class="row" style="margin-bottom:8px"><input class="in" style="flex:2;min-width:150px" value="${esc(f.nombre)}" onchange="ADM.fijos[${i}].nombre=this.value"><select class="in" style="flex:1;min-width:120px" onchange="ADM.fijos[${i}].categoria=this.value">${ADM.categorias.map(c=>`<option ${c===f.categoria?'selected':''}>${esc(c)}</option>`).join('')}</select><select class="in" style="flex:1;min-width:120px" onchange="ADM.fijos[${i}].sucursal=this.value"><option value="general">General</option>${CFG.sucursales.map(s=>`<option value="${s.id}" ${s.id===f.sucursal?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select><select class="in" style="flex:1;min-width:140px" title="Anticipos que cuentan como pago" onchange="ADM.fijos[${i}].empSuc=this.value"><option value="">Sin anticipos</option>${[...CFG.sucursales,{id:'general',nombre:'General'}].map(x=>`<option value="${x.id}" ${x.id===f.empSuc?'selected':''}>Anticipos de ${esc(x.nombre)}</option>`).join('')}</select><input class="in money" style="flex:1;min-width:120px" inputmode="decimal" placeholder="Monto ref." value="${n(f.montoRef)?Math.round(f.montoRef).toLocaleString('es-AR'):''}" onchange="ADM.fijos[${i}].montoRef=parseNum(this.value)"><select class="in" style="flex:1;min-width:110px" onchange="ADM.fijos[${i}].cuenta=this.value">${CUENTAS_PAGO().map(c=>`<option value="${c.id}" ${c.id===f.cuenta?'selected':''}>${esc(c.nombre)}</option>`).join('')}</select><button class="btn sm o" onclick="ADM.fijos.splice(${i},1);render()">✕</button></div>`).join('')}
   <div class="row"><button class="btn sm o" onclick="ADM.fijos.push({id:uid(),nombre:'',categoria:ADM.categorias[0],sucursal:'general',cuenta:'efectivo'});render()">+ Agregar gasto fijo</button><span class="sp"></span><button class="btn y" onclick="guardarAdm()">Guardar lista</button></div></div>`;
 }
+/* sueldo o adelanto de un dueño, cargado por el mismo dueño: gasto "Sueldos de los dueños" que cuenta como pago de su gasto fijo */
+const dueFijos=()=>ADM.fijos.filter(f=>f.categoria==='Sueldos de los dueños');
+const dueBtn=()=>S&&S.role==='dueno'&&dueFijos().length?`<div class="row" style="margin:-4px 0 12px"><span class="sp"></span><button class="btn y" onclick="dueSueldo()">💵 Sueldo / adelanto de dueño</button></div>`:'';
+function dueSueldo(){const F=dueFijos(),ab=mesesAbiertos();if(!F.length)return toast('No hay sueldos de dueños en los gastos fijos',true);if(!ab.length)return toast('No hay ningún mes abierto',true);
+  const mOk=ab.includes(mesDe(hoy()))?mesDe(hoy()):ab[ab.length-1],yo=F.find(f=>(S.nombre||'').split(' ')[0]&&f.nombre.toLowerCase().includes((S.nombre||'').split(' ')[0].toLowerCase()))||F[0];
+  modal('Sueldo o adelanto de dueño',`<div class="grid g2"><div class="fld"><label class="f">De quién</label><select class="in" id="ds-f" onchange="dueHint()">${F.map(f=>`<option value="${f.id}" ${f===yo?'selected':''}>${esc(f.nombre.replace(/^Sueldo /,''))}</option>`).join('')}</select></div>
+  <div class="fld"><label class="f">Qué es</label><select class="in" id="ds-t"><option value="adelanto">Adelanto de sueldo</option><option value="sueldo">Sueldo (pago del mes)</option></select></div>
+  <div class="fld"><label class="f">Sale de la caja de</label><select class="in" id="ds-m" onchange="dueHint()">${ab.map(m=>`<option value="${m}" ${m===mOk?'selected':''}>${mesNom(m)}</option>`).join('')}</select></div>
+  <div class="fld"><label class="f">Cuenta</label><select class="in" id="ds-c">${CUENTAS_PAGO().map(c=>`<option value="${c.id}" ${c.id===(yo.cuenta||'mp')?'selected':''}>${esc(c.nombre)}</option>`).join('')}</select></div>
+  <div class="fld"><label class="f">Monto</label><input class="in money" id="ds-v" inputmode="decimal"></div><div class="fld"><label class="f">Fecha</label><input class="in" type="date" id="ds-d" value="${hoy()}"></div></div>
+  <div class="fld"><label class="f">Detalle (opcional)</label><input class="in" id="ds-x" placeholder="Ej.: transferencia a mi cuenta"></div>
+  <div class="al i" id="ds-h" style="margin-bottom:10px"></div><button class="btn y full" onclick="dueSueldoOk()">Registrar</button>`);setTimeout(dueHint,0)}
+function dueHint(){const e=$('#ds-h');if(!e)return;const f=ADM.fijos.find(x=>x.id===$('#ds-f').value),m=$('#ds-m').value;const st=(fijosEstado(m).find(x=>x.f.id===f.id)||{});
+  e.innerHTML=`Se registra como gasto <b>"Sueldos de los dueños"</b> en la caja de ${mesNom(m)} y cuenta como pago de <b>${esc(f.nombre)}</b>${st.aPagar?`: a pagar ${money(st.aPagar)}, ya pagado ${money(st.pagado||0)}, falta ${money(Math.max(0,st.saldo||0))}`:''}. Así el administrativo no lo vuelve a pagar.`}
+async function dueSueldoOk(){const f=ADM.fijos.find(x=>x.id===$('#ds-f').value),v=parseNum($('#ds-v').value);if(!f)return;if(!(v>0))return toast('Poné el monto',true);
+  const ad=$('#ds-t').value==='adelanto',quien=f.nombre.replace(/^Sueldo /,''),det=$('#ds-x').value.trim();
+  GF=nuevoGF({tipo:'gasto',fijoId:f.id,proveedor:f.nombre,concepto:(ad?'Adelanto de sueldo · ':'Sueldo · ')+quien+(det?' · '+det:''),categoria:'Sueldos de los dueños',sucursal:f.sucursal||'general',cuenta:$('#ds-c').value,mes:$('#ds-m').value,fecha:$('#ds-d').value||hoy(),monto:v,factura:true});
+  return unaVez('duesueldo',()=>gfGuardar())}
 function fijoPagar(id){const f=ADM.fijos.find(x=>x.id===id);const e=fijosEstado(SEL.mes).find(x=>x.f.id===id)||{};gfNuevo({tipo:'gasto',fijoId:id,monto:e.saldo?e.saldo:'',proveedor:f.nombre,concepto:f.nombre,categoria:f.categoria,sucursal:f.sucursal||'general',cuenta:f.cuenta||'efectivo',mes:mesesAbiertos().includes(SEL.mes)?SEL.mes:undefined})}
 async function fijoMonto(id,v){const m=SEL.mes;if(!(await asegurarMes(m)))return toast('El mes está cerrado',true);const x=mesInfo(m);x.fijosMonto=x.fijosMonto||{};const val=String(v).trim()===''?null:parseNum(v);if(val==null)delete x.fijosMonto[id];else x.fijosMonto[id]=val;await safe(()=>DB.set('mes:'+m,x));render()}
 async function fijoNA(id,on){const m=SEL.mes;if(!(await asegurarMes(m)))return toast('El mes está cerrado',true);const x=mesInfo(m);x.fijosNA=(x.fijosNA||[]).filter(y=>y!==id);if(on)x.fijosNA.push(id);await safe(()=>DB.set('mes:'+m,x));render()}
@@ -4760,7 +4778,7 @@ function ownGastos(){
   const m=SEL.mes,R=metricas(m),Rp=metricas(mesPrev(m));
   const porSuc={};CFG.sucursales.forEach(s=>{const x=R.porSuc[s.id];porSuc[s.nombre]=x.directos+x.caja+x.prorr+x.desc});
   const top=(D.mov[m]||[]).filter(x=>x.tipo==='gasto'&&!(esGer()&&x.categoria==='Sueldos de los dueños')).sort((a,b)=>n(b.monto)-n(a.monto)).slice(0,10);
-  return`${cabMes('Gastos')}
+  return`${cabMes('Gastos')}${dueBtn()}
   <div class="grid g3" style="margin-bottom:14px"><div class="kpi"><div class="l">Gastos totales</div><div class="v">${money(R.gastos)}</div><div class="d">${varPct(R.gastos,Rp.gastos)}</div></div><div class="kpi"><div class="l">Gastos fijos</div><div class="v">${money(R.fijos)}</div></div><div class="kpi"><div class="l">Variables</div><div class="v">${money(R.variables)}</div></div></div>
   <div class="card"><h3>Por categoría</h3>${bars(R.porCat)}</div>
   ${esGer()?'':fijosCompHTML(m)}
@@ -4786,7 +4804,7 @@ function ownPlata(){
     if(c.id==='efectivo'){const cs=[...mesesConPlata().map(x=>D.rtEf[x]),D.rtEf.ahorro].filter(Boolean);const aho=ahorroSaldo('efectivo');const tot=cs.reduce((a,r)=>a+n(r.monto),0);const debe=neg+aho;return{c,neg,R:{re:cs.length?{monto:tot}:null,aho,dif:cs.length?tot-debe:null}}}
     return{c,R:reparto(mesSaldo()||m,c.id),neg}});
   const totReal=ctas.reduce((a,x)=>a+(x.R.re?n(x.R.re.monto):0),0),totAho=ctas.reduce((a,x)=>a+x.R.aho,0),faltan=ctas.filter(x=>!x.R.re&&(Math.abs(x.neg)>=1||Math.abs(x.R.aho)>=1));
-  return`${cabMes('Plata')}
+  return`${cabMes('Plata')}${dueBtn()}
   <div class="card"><h3>Lo que hay realmente</h3><p class="sm mut" style="margin-top:-6px">Efectivo contado (cajas de los meses abiertos más la caja de ahorro) y saldo total de cada banco. Debajo, cuánto es de la caja de ahorro de los dueños y cuánto es del negocio (meses abiertos).</p>
   <div class="grid g4">
    <div class="kpi hl"><div class="l">Total en todas las cuentas</div><div class="v">${money(totReal)}</div><div class="d">${faltan.length?`Sin saldo cargado: ${faltan.map(x=>esc(x.c.nombre)).join(', ')}`:'Todas las cuentas cargadas'}</div></div>
@@ -5179,5 +5197,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-15a -->
+<!-- version 2026-11-16a -->
 </html>
