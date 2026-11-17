@@ -4577,10 +4577,10 @@ function resExtraHTML(m){if(!S||S.role!=='dueno')return'';const R=metricas(m),Rp
   const cats=Object.entries(R.porCat).filter(([k,v])=>Math.abs(v)>=1).sort((a,b)=>b[1]-a[1]);const pv=v=>R.venta?pct(v/R.venta*100):'—';
   const conf=(D.cie[m]||[]).filter(x=>x.estado==='confirmado');let dif=0;conf.forEach(x=>{const r=calc(x);if(r.dif!=null)dif+=r.dif});
   return`<div class="grid g2" style="align-items:start">
-   <div class="card"><h3>Cómo se llega al resultado</h3><div class="tw"><table class="t"><thead><tr><th>Concepto</th><th class="r">Monto</th><th class="r">% venta</th></tr></thead><tbody>
+   <div class="card"><h3>Cómo se llega al resultado</h3><p class="xs mut" style="margin-top:-6px">Tocá una línea para ver cada pago.</p><div class="tw"><table class="t"><thead><tr><th>Concepto</th><th class="r">Monto</th><th class="r">% venta</th></tr></thead><tbody>
     <tr><td><b>Venta confirmada</b></td><td class="r num b">${money(R.venta)}</td><td class="r">100%</td></tr>
     ${R.otrosIng?`<tr><td>+ Otros ingresos</td><td class="r num">${money(R.otrosIng)}</td><td class="r">${pv(R.otrosIng)}</td></tr>`:''}
-    ${cats.map(([k,v])=>v<0?`<tr><td>+ ${esc(k)} <span class="xs mut">(consumos internos y retiros de socios pasados a costo)</span></td><td class="r num">${money(-v)}</td><td class="r">${pv(-v)}</td></tr>`:`<tr><td>− ${esc(k)}</td><td class="r num">${money(v)}</td><td class="r">${pv(v)}</td></tr>`).join('')}
+    ${cats.map(([k,v])=>v<0?`<tr style="cursor:pointer" data-k="${esc(k)}" onclick="catDet(this.dataset.k)"><td>+ ${esc(k)} <span class="xs mut">(consumos internos y retiros de socios pasados a costo)</span></td><td class="r num">${money(-v)}</td><td class="r">${pv(-v)}</td></tr>`:`<tr style="cursor:pointer" data-k="${esc(k)}" onclick="catDet(this.dataset.k)"><td>− ${esc(k)}</td><td class="r num">${money(v)}</td><td class="r">${pv(v)}</td></tr>`).join('')}
     <tr class="tot"><td>Resultado</td><td class="r">${money(R.resultado)}</td><td class="r">${pv(R.resultado)}</td></tr></tbody></table></div></div>
    <div class="card"><h3>Cómo viene el mes</h3>
     ${P?`<div class="it"><div class="m"><b>Proyección de venta</b>${proyDet(P).replace(/class="d mut"/g,'class="sm mut"').replace(/class="d"/g,'class="sm"')}</div><b class="num">${money(P.proy)}</b></div>`:''}
@@ -4842,7 +4842,30 @@ async function ipcGuardar(k,v){const x=String(v).trim();const ipc=clone(D.ipc||{
 
 function cabMes(t){return`<div class="row" style="margin-bottom:12px"><h2 class="sec sp" style="margin:0">${t}</h2>${mesSelect('setMes(this.value)')}</div>`}
 function varPct(a,b){if(!b)return'';const v=(a-b)/Math.abs(b)*100;return`<span class="delta ${v>=0?'up':'dn'}">${v>=0?'↑':'↓'} ${pct(Math.abs(v))}</span> <span class="mut">vs mes anterior</span>`}
-function bars(obj,fmt,max){const ks=Object.entries(obj).filter(([k,v])=>v).sort((a,b)=>b[1]-a[1]);const mx=max||Math.max(1,...ks.map(x=>Math.abs(x[1])));return ks.length?ks.map(([k,v])=>`<div class="bar"><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="tr"><span class="fl" style="width:${Math.max(1,Math.abs(v)/mx*100)}%;${v<0?'background:var(--red)':''}"></span></span><span class="vl">${(fmt||money)(v)}</span></div>`).join(''):'<div class="empty">Sin datos.</div>'}
+/* detalle de una categoría de gasto: de dónde sale cada peso (mismas reglas que metricas) */
+function catFilas(m,cat){const F=[],conf=(D.cie[m]||[]).filter(c=>c.estado==='confirmado'),turno=c=>suc(c.suc).nombre+' '+c.turno;
+  conf.forEach(c=>(c.gastos||[]).forEach(g=>{const k=g.cat?g.cat+' (caja sucursal)':'Gastos de caja (sucursales)';if(k===cat)F.push({f:c.fecha,q:turno(c),d:[g.prov,g.det||g.desc].filter(Boolean).join(' · '),o:'Caja del turno'+(c.cajero?' · '+c.cajero:''),v:n(g.monto)})}));
+  if(cat==='Roturas')conf.forEach(c=>{const r=calc(c);if(r.roturas)F.push({f:c.fecha,q:turno(c),d:'Roturas cargadas en el cierre',o:'Caja del turno',v:r.roturas})});
+  if(cat==='Sueldo empleados')conf.forEach(c=>{const r=calc(c);if(r.anticipos)F.push({f:c.fecha,q:turno(c),d:'Vales: '+(c.anticipos||[]).filter(x=>!esRotEmp(x)).map(x=>(x.nombre||x.det||'')+' '+money(x.monto)).join(', '),o:'Caja del turno',v:r.anticipos});if(r.rotEmp)F.push({f:c.fecha,q:turno(c),d:'Roturas a cargo de empleados (se descuentan del sueldo; también suman como ingreso)',o:'Caja del turno',v:r.rotEmp})});
+  (D.mov[m]||[]).filter(x=>!(typeof esGer==='function'&&esGer()&&x.categoria==='Sueldos de los dueños')).forEach(x=>{
+    if(x.tipo==='gasto'||x.tipo==='anticipo'){const k=x.tipo==='anticipo'||x.categoria==='Sueldos'||x.categoria==='Gastos de empleados (anticipos)'?'Sueldo empleados':(x.categoria==='Axion'?'Mercadería Axion':(x.categoria||'Otros'));
+      if(k===cat)F.push({f:x.fecha,q:x.proveedor||x.nombre||(x.empId&&emp(x.empId)?emp(x.empId).nombre:'')||'',d:[x.concepto&&x.concepto!==x.proveedor?x.concepto:'',x.fijoId?'gasto fijo':'',x.tipo==='gasto'&&!x.factura&&!movFranq(x)?'sin factura':''].filter(Boolean).join(' · '),o:cuentaNom(x.cuenta),v:n(x.monto)})}
+    if(cat==='Impuesto al débito (pagos con banco)'){const ip=impPago(x);if(ip)F.push({f:x.fecha,q:x.proveedor||x.concepto||'',d:'Impuesto sobre un pago de '+money(x.monto),o:cuentaNom(x.cuenta),v:ip})}});
+  if(cat==='Impuesto al débito (pagos con banco)')D.pre.forEach(p=>{const a=p.mes===m?impPre(p,'sale'):0,b=p.dev&&p.dev.mes===m?impPre(p,'dev'):0;if(a)F.push({f:p.fecha,q:p.negocio||'',d:'Impuesto sobre un préstamo dado',o:cuentaNom(p.cuenta),v:a});if(b)F.push({f:p.dev.fecha,q:p.negocio||'',d:'Impuesto sobre la devolución de un préstamo',o:cuentaNom(p.dev.cuenta),v:b})});
+  conf.forEach(c=>{const r=calc(c),v=n(r.descC[cat]);if(v)F.push({f:c.fecha,q:turno(c),d:'Sobre lo cobrado con tarjeta, QR y apps en el turno',o:'Lo descuenta el medio de cobro',v})});
+  D.vou.filter(v=>v.estado==='cobrado'&&v.cobro&&v.cobro.mes===m).forEach(v=>{const c=vouCom(v),i=vouImp(v);if(cat==='Comisión vouchers'&&c)F.push({f:v.cobro.fecha||v.fecha,q:v.empresa||'Voucher',d:'Comisión del voucher'+(v.nro?' N° '+v.nro:''),o:'Al cobrarlo',v:c});if(cat==='Impuesto al débito y crédito'&&i)F.push({f:v.cobro.fecha||v.fecha,q:v.empresa||'Voucher',d:'Impuesto al cobrar el voucher'+(v.nro?' N° '+v.nro:''),o:'Al cobrarlo',v:i})});
+  if(cat==='Mercadería'||cat==='Donaciones y atenciones comerciales'){const CI=consIntMes(m,conf),TN={donacion:'Donación',redes:'Atención comercial / redes',socio:'Retiro de un socio'};
+    CI.items.filter(it=>it.x.tipo==='donacion'||it.x.tipo==='redes'||(cat==='Mercadería'&&it.x.tipo==='socio')).forEach(it=>F.push({f:it.c.fecha,q:turno(it.c),d:(TN[it.x.tipo]||it.x.tipo)+(it.x.socio?' · '+it.x.socio:'')+(it.x.det?' · '+it.x.det:'')+' · precio de venta '+money(it.pvp)+' → a costo',o:cat==='Mercadería'?'Se resta de mercadería':'Consumo interno a costo',v:cat==='Mercadería'?-it.costo:it.costo}))}
+  return F.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v))}
+function catDet(cat){const m=SEL.mes,R=metricas(m),tot=n(R.porCat[cat]),F=catFilas(m,cat),suma=F.reduce((a,x)=>a+x.v,0),dif=Math.round((tot-suma)*100)/100;
+  const NOTA={'Mercadería':'Es un ajuste: lo que se regaló, se usó para atenciones o retiraron los socios en las sucursales se resta de la mercadería (a costo), porque no fue costo de lo vendido. Lo de donaciones y atenciones pasa a su propia categoría.','Comisión':'Lo que cobran Mercado Pago, los posnet y las apps por cada cobro. Se calcula en cada cierre de turno confirmado.','IVA de la comisión':'El IVA de las comisiones de cobro. Se calcula en cada cierre de turno confirmado.','Ingresos brutos':'La retención de ingresos brutos sobre los cobros con tarjeta y QR, por cierre de turno.','Impuesto al débito y crédito':'El impuesto al débito y crédito sobre lo cobrado por banco y Mercado Pago.','Impuesto al débito (pagos con banco)':'El impuesto que cobra el banco o Mercado Pago cuando se paga algo desde esa cuenta.','Sueldo empleados':'Suma los sueldos y anticipos pagados por Administración, y los vales que los empleados sacaron de la caja del turno.'}[cat];
+  modal(cat+' · '+mesNombre(m),`${NOTA?`<p class="sm mut" style="margin-top:0">${NOTA}</p>`:''}
+  <div class="row" style="margin-bottom:8px"><span class="sm sp">${F.length} movimiento(s)</span><b>${money(tot)}</b></div>
+  ${F.length?`<div class="tw" style="max-height:60vh;overflow:auto"><table class="t"><thead><tr><th>Fecha</th><th>A quién / dónde</th><th>Detalle</th><th>De dónde salió</th><th class="r">Monto</th></tr></thead><tbody>
+  ${F.map(x=>`<tr><td class="sm" style="white-space:nowrap">${x.f?fFecha(x.f):'—'}</td><td class="sm"><b>${esc(x.q)}</b></td><td class="sm">${esc(x.d)}</td><td class="sm">${esc(x.o)}</td><td class="r num ${x.v<0?'dn':''}">${money(x.v)}</td></tr>`).join('')}
+  ${Math.abs(dif)>=1?`<tr><td colspan="4" class="sm mut">Ajustes sin detalle</td><td class="r num">${money(dif)}</td></tr>`:''}
+  <tr class="tot"><td colspan="4">Total</td><td class="r">${money(tot)}</td></tr></tbody></table></div>`:'<div class="empty">No hay movimientos.</div>'}`)}
+function bars(obj,fmt,max,clk){const ks=Object.entries(obj).filter(([k,v])=>v).sort((a,b)=>b[1]-a[1]);const mx=max||Math.max(1,...ks.map(x=>Math.abs(x[1])));return ks.length?ks.map(([k,v])=>`<div class="bar"${clk?` style="cursor:pointer" data-k="${esc(k)}" onclick="${clk}(this.dataset.k)" title="Ver el detalle"`:''}><span class="lb" title="${esc(k)}">${esc(k)}</span><span class="tr"><span class="fl" style="width:${Math.max(1,Math.abs(v)/mx*100)}%;${v<0?'background:var(--red)':''}"></span></span><span class="vl">${(fmt||money)(v)}</span></div>`).join(''):'<div class="empty">Sin datos.</div>'}
 /* proyección del mes (resumen del dueño): solo cierres confirmados hasta ayer, llevados al mes completo según cómo vino el mismo mes del año pasado */
 function proyMes(m){const h=hoy(),ay=+h.slice(8)-1,dm=diasDelMes(m);if(ay<1)return{proy:0,k:0,modo:'nada'};
   let k=0;while(k<ay&&!cmpFaltanDia(m,k+1,true).length)k++;if(k<1)return{proy:0,k:0,ay,modo:'sinconf'};
@@ -4958,7 +4981,7 @@ function ownGastos(){
   const top=(D.mov[m]||[]).filter(x=>x.tipo==='gasto'&&!(esGer()&&x.categoria==='Sueldos de los dueños')).sort((a,b)=>n(b.monto)-n(a.monto)).slice(0,10);
   return`${cabMes('Gastos')}${dueBtn()}
   <div class="grid g3" style="margin-bottom:14px"><div class="kpi"><div class="l">Gastos totales</div><div class="v">${money(R.gastos)}</div><div class="d">${varPct(R.gastos,Rp.gastos)}</div></div><div class="kpi"><div class="l">Gastos fijos</div><div class="v">${money(R.fijos)}</div></div><div class="kpi"><div class="l">Variables</div><div class="v">${money(R.variables)}</div></div></div>
-  <div class="card"><h3>Por categoría</h3>${bars(R.porCat)}</div>
+  <div class="card"><h3>Por categoría</h3><p class="xs mut" style="margin-top:-6px">Tocá una categoría para ver cada pago.</p>${bars(R.porCat,null,null,'catDet')}</div>
   ${esGer()?'':fijosCompHTML(m)}
   ${esGer()?'':ciReporteHTML(m)}
   <div class="card"><h3>Comisiones e impuestos pagados en el mes</h3><p class="sm mut" style="margin-top:-6px">Lo que descuentan bancos y billeteras sobre lo cobrado. Ya está incluido en los gastos totales.</p>${impTotalesHTML(impuestosMes(m))}</div>
@@ -5376,5 +5399,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-16b -->
+<!-- version 2026-11-17a -->
 </html>
