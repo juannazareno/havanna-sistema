@@ -885,12 +885,12 @@ function render(){
   app.innerHTML=`<div class="shell">
    <aside class="side">${brandHTML()}
     <div class="who"><div class="av">${esc(ini)}</div><div><b>${esc(roleName)}</b><span>${esc(roleSub)}</span></div></div>
-    <nav class="nav">${tabs.map(t=>`<button class="${tab===t.id?'on':''}" onclick="go('${t.id}')">${ico(t.id)}<span>${t.n}</span>${t.bd?`<span class="bd">${t.bd}</span>`:''}</button>`).join('')}</nav>
+    <nav class="nav">${tabs.map(t=>`<button class="${(t.on!=null?t.on:tab===t.id)?'on':''}" onclick="go('${t.go||t.id}')">${ico(t.ic||t.id)}<span>${t.n}</span>${t.bd?`<span class="bd">${t.bd}</span>`:''}</button>`).join('')}</nav>
     <div class="side-foot"><button class="tbtn" onclick="doRefresh()">${ico('refresh',15)} Actualizar</button><button class="tbtn" onclick="logout()">${ico('salir',15)} Salir</button>${modo}</div>
    </aside>
    <div class="main">
     <div class="top"><div class="top-in"><div class="ti"><img class="brand-h" src="${LOGO_ESC}" alt=""><div style="min-width:0"><b>${esc(roleName)}</b><span>${esc(roleSub)}${LOCAL?' · modo prueba':''}</span></div></div><button class="tbtn" onclick="doRefresh()" aria-label="Actualizar">${ico('refresh',15)}</button><button class="tbtn" onclick="logout()" aria-label="Salir">${ico('salir',15)}</button></div>
-     <div class="tabs">${tabs.map(t=>`<button class="tab ${tab===t.id?'on':''}" onclick="go('${t.id}')">${t.n}${t.bd?`<span class="bd">${t.bd}</span>`:''}</button>`).join('')}</div></div>
+     <div class="tabs">${tabs.map(t=>`<button class="tab ${(t.on!=null?t.on:tab===t.id)?'on':''}" onclick="go('${t.go||t.id}')">${t.n}${t.bd?`<span class="bd">${t.bd}</span>`:''}</button>`).join('')}</div></div>
     <div class="wrap">${body}</div>
    </div></div>`;
   hydrateFotos();fmtTodos();if(S&&S.role==='enc'&&tab==='anticipos')antDispHint();
@@ -4439,11 +4439,189 @@ async function leOp(k,op,v){return unaVez('le'+k,async()=>{editando();const cur=
 /* ===================================================================== DUEÑOS */
 const GER_OCULTO=['resumen','plata','ahorro','control','config','cheques','comp','gastos'];
 const esGer=()=>!!S&&S.role==='gerente';
-function ownTabs(){
+function ownTabs(){return esDueMenu()?ownModTabs():ownTabsViejo()}
+/* ===================== PANEL DEL DUEÑO: 5 módulos (Inicio, Números, Plata, Áreas, Mensajes) ===================== */
+const OWN_MOD=[
+  {id:'inicio',n:'Inicio',ic:'inicio',subs:[['resumen','Inicio']]},
+  {id:'numeros',n:'Números',ic:'grafico',subs:[['reporte','Resultado'],['ventas','Ventas'],['gastos','Gastos'],['sucursales','Sucursales'],['comp','Comparativo']]},
+  {id:'plata',n:'Plata',ic:'plata',subs:[['cajames','Cajas del mes'],['ahorro','Caja de ahorro'],['cheques','Cheques'],['cuadre','Cuadre de cuentas'],['control','Cierres de turno']]},
+  {id:'areas',n:'Áreas',ic:'tablero',subs:[['areas','Tablero'],['gerencia','Gerencia'],['personal','Personal'],['compras','Abastecimiento y stock'],['calidad','Calidad'],['mant','Mantenimiento'],['marketing','Marketing'],['carta','Carta']]},
+  {id:'mensajes',n:'Mensajes',ic:'mensajes',subs:[['mensajes','Mensajes']]},
+  {id:'config',n:'Configuración',ic:'config',subs:[['config','Configuración']]}];
+/* pestañas que viven dentro de otra (misma sub-pestaña) */
+const OWN_ALIAS={rrhh:'personal',stockctl:'compras',plata:'cajames',vdia:'ventas'};
+const OWN_ULT={};
+const esDueMenu=()=>!!S&&S.role==='dueno';
+function ownSubDe(t){return OWN_ALIAS[t]||t}
+function ownModDe(t){const s=ownSubDe(t);return OWN_MOD.find(m=>m.subs.some(x=>x[0]===s))||OWN_MOD[0]}
+function ownModTabs(){const bdOf=t=>{const T=ownTabsViejo().find(x=>x.id===t);return T&&T.bd?Number(T.bd)||0:0};
+  return OWN_MOD.map(m=>{let bd=0;if(m.id==='mensajes')bd=noLeidos();else if(m.id==='inicio')bd=dueDecidir().length+mkAutPend().length;else if(m.id==='plata')bd=bdOf('cheques');
+    return{id:m.id,n:m.n,ic:m.ic,bd:bd||'',on:ownModDe(tab).id===m.id,go:OWN_ULT[m.id]||m.subs[0][0]}})}
+function ownGo(modId){const m=OWN_MOD.find(x=>x.id===modId);if(!m)return;go(OWN_ULT[modId]||m.subs[0][0])}
+function ownSubBar(){const m=ownModDe(tab);OWN_ULT[m.id]=tab;if(m.subs.length<2)return'';const cur=ownSubDe(tab);
+  return`<div class="seg" style="margin-bottom:14px;flex-wrap:wrap">${m.subs.map(([id,n])=>`<button class="${cur===id?'on':''}" onclick="go('${id}')">${n}</button>`).join('')}</div>`}
+/* dentro de una sub-pestaña que junta dos pantallas */
+function ownDoble(){const s=ownSubDe(tab);
+  if(s==='personal')return`<div class="seg" style="margin-bottom:12px"><button class="${tab==='personal'?'on':''}" onclick="go('personal')">Resumen de personal</button><button class="${tab==='rrhh'?'on':''}" onclick="go('rrhh')">RRHH completo</button></div>`;
+  if(s==='compras')return`<div class="seg" style="margin-bottom:12px"><button class="${tab==='compras'?'on':''}" onclick="go('compras')">Abastecimiento</button><button class="${tab==='stockctl'?'on':''}" onclick="go('stockctl')">Control de stock${skcPend().length?` <span class="bd">${skcPend().length}</span>`:''}</button></div>`;
+  return''}
+
+/* ---------- datos compartidos ---------- */
+function duePatrimonio(){const disp=CUENTAS_AHO().reduce((t,c)=>t+ahorroSaldo(c.id),0),pres=ahoPrestado(),act=D.act.filter(a=>a.activo!==false).reduce((t,a)=>{const v=actValor(a);return t+(v!=null?v:actCapital(a.id))},0);return{disp,pres,act,tot:disp+pres+act}}
+function duePlataNegocio(){const ms=mesesConPlata();const por={};CUENTAS_PAGO().forEach(c=>por[c.id]=ms.reduce((a,x)=>a+(saldos(x)[c.id]||0),0));return{ms,por,tot:Object.values(por).reduce((a,v)=>a+v,0)}}
+/* lo que necesita una respuesta del dueño */
+function dueDecidir(){const L=[];if(!S||S.role!=='dueno')return L;
+  D.mes.filter(x=>x.estado==='pendiente').forEach(x=>L.push({t:`Administración pidió cerrar ${mesNom(x.id)}`,d:'Revisá y aprobá para pasar la ganancia a la caja de ahorro.',b:`<button class="btn y sm" onclick="ownVerCierre('${x.id}')">Revisar y aprobar</button>`}));
+  D.ant.filter(a=>a.estado==='solicitado').forEach(a=>L.push({t:`Anticipo de ${esc(a.nombre||(emp(a.empId)||{}).nombre||'')} · ${money(a.monto)}`,d:`Pedido el ${fFecha((a.fecha||a.ts||'').slice(0,10))}${a.motivo?' · '+esc(a.motivo):''}`,b:`<button class="btn o sm" onclick="antDecidir('${a.id}','rechazado')">Rechazar</button> <button class="btn y sm" onclick="antDecidir('${a.id}','aprobado')">Aprobar</button>`}));
+  const A=[];chqAlertasDueno(A);A.forEach(x=>L.push({t:x.h.replace(/ Ver en Cheques\.?$/,''),d:'',b:`<button class="btn o sm" onclick="go('cheques')">Ver cheques</button>`,sev:x.t}));
+  return L}
+/* lo que el equipo tiene que cargar o hacer (con responsable) */
+function dueFalta(m){const L=[];const fl=faltantes(m);if(fl.length)L.push({t:'Turnos sin cierre',n:fl.length,d:fl.slice(-3).map(f=>`${suc(f.suc).nombre} ${f.turno} ${fFecha(f.fecha)}`).join(', ')+(fl.length>3?'…':'')+' (puede que no hayan abierto)',r:'Gerente',para:'gerente'});
+  const env=Object.values(D.cie).flat().filter(c=>c.estado==='enviado');if(env.length)L.push({t:'Cierres sin confirmar',n:env.length,d:`${env.filter(c=>c.enviado&&Date.now()-new Date(c.enviado).getTime()>24*3600e3).length} con más de 24 hs`,r:'Administración',para:'admin'});
+  const sinConc=(D.cie[m]||[]).filter(c=>c.estado==='confirmado'&&!c.conc).length;if(sinConc)L.push({t:'Cierres confirmados sin conciliar con el sistema Havanna',n:sinConc,d:'',r:'Administración',para:'admin'});
+  const sk=skcPend().length;if(sk)L.push({t:'Controles de stock atrasados',n:sk,d:'',r:'Control de stock',para:'stock'});
+  const mv=D.mtt.filter(t=>!t.done&&mtVencida(t)).length;if(mv)L.push({t:'Tareas de mantenimiento vencidas',n:mv,d:`${D.mtt.filter(t=>!t.done&&mtVencida(t)&&t.urg==='alta').length} urgentes`,r:'Mantenimiento',para:'mant'});
+  const fp=fijosEstado(m).filter(e=>e.debe);if(fp.length)L.push({t:'Gastos fijos sin pagar o pagados en parte',n:fp.length,d:'falta '+money(fp.reduce((a,e)=>a+e.saldo,0)),r:'Administración',para:'admin'});
+  const R=metricas(m);if(R.sinFactura.length)L.push({t:'Gastos sin factura',n:R.sinFactura.length,d:money(sum(R.sinFactura)),r:'Administración',para:'admin'});
+  const rec=D.rec.filter(r=>r.estado!=='resuelto').length;if(rec)L.push({t:'Reclamos de clientes sin resolver',n:rec,d:'',r:'Calidad',para:'calidad'});
+  return L}
+async function dueAvisar(i){const x=dueFalta(SEL.mes)[i];if(!x)return;const txt=`Los dueños piden ponerse al día: ${x.t} (${x.n}).${x.d?' '+x.d:''}`;if(!confirm(`¿Mandarle este mensaje a ${x.r}?\n\n${txt}`))return;
+  await safe(()=>enviarMsg(x.para,txt),'Mensaje enviado a '+x.r);render()}
+
+/* ---------- INICIO ---------- */
+function ownInicio(){const m=SEL.mes,R=metricas(m),Rp=metricas(mesPrev(m)),esAct=m===mesDe(hoy()),P=esAct?proyMes(m):null;
+  const PN=duePlataNegocio(),PT=duePatrimonio(),DEC=dueDecidir(),FAL=dueFalta(m);
+  const yaMostrado=/pidió cerrar|cheque|sin cierre|sin confirmar por Administración|sin conciliar|Gastos fijos sin pagar|sin factura|anticipo\(s\) esperando|mensaje\(s\) sin leer/;
+  const MIR=alertasDueno(m,R).filter(a=>!yaMostrado.test(a.h));
+  const SUC=CFG.sucursales.filter(s=>s.id!=='std').map(gHoySuc);
+  const hora=new Date().getHours(),sal=hora<12?'Buen día':hora<20?'Buenas tardes':'Buenas noches';
+  return`<div class="row" style="margin-bottom:12px;flex-wrap:wrap;gap:10px"><div class="sp"><div class="xs mut">${dNom(hoy())} ${fFecha(hoy())} · ${ahoraHM()}</div><h2 class="sec" style="margin:2px 0 0">${sal}</h2></div>${mesSelect('setMes(this.value)')}</div>
+  <div class="grid g4" style="margin-bottom:14px">
+   <div class="kpi hl" style="cursor:pointer" onclick="go('ventas')"><div class="l">${ico('ventas')}Venta confirmada · ${mesNombre(m)}</div><div class="v">${money(R.venta)}</div><div class="d">${varPct(R.venta,Rp.venta)}</div>${R.ventaPend?`<div class="d mut">+ ${money(R.ventaPend)} sin confirmar</div>`:''}${P?`<div class="d" style="margin-top:6px"><b>Proyección del mes ${money(P.proy)}</b></div>${proyDet(P)}`:''}</div>
+   <div class="kpi" style="cursor:pointer" onclick="go('reporte')"><div class="l">${ico('grafico')}Resultado</div><div class="v ${R.resultado<0?'dn':''}">${money(R.resultado)}</div><div class="d ${R.resultado<0?'dn':'up'}">${R.venta?'Margen '+pct(R.resultado/R.venta*100):''}</div></div>
+   <div class="kpi" style="cursor:pointer" onclick="go('cajames')"><div class="l">${ico('bancos')}Plata del negocio</div><div class="v">${money(PN.tot)}</div><div class="d mut">${PN.ms.length?'Cajas de '+PN.ms.map(x=>mesNombre(x)).join(' y '):'No hay meses abiertos'} (según el sistema)</div></div>
+   <div class="kpi" style="cursor:pointer" onclick="go('ahorro')"><div class="l">${ico('plata')}Lo de ustedes</div><div class="v">${money(PT.tot)}</div><div class="d mut">Caja de ahorro ${money(PT.disp)}${PT.pres?' · prestado '+money(PT.pres):''}${PT.act?' · activos '+money(PT.act):''}</div></div>
+  </div>
+  <div class="grid g2" style="align-items:start">
+   <div>
+    <div class="card"><div class="row"><h3 class="sp" style="margin:0">Para decidir vos</h3>${DEC.length?`<span class="pill p-w">${DEC.length}</span>`:''}</div><p class="xs mut" style="margin:4px 0 6px">Solo lo que necesita una respuesta tuya. Lo de Marketing para autorizar aparece arriba de todo.</p>
+     ${DEC.length?DEC.map(x=>`<div class="it"><div class="m"><b>${x.t}</b>${x.d?`<span class="sm mut">${x.d}</span>`:''}</div><div style="white-space:nowrap">${x.b}</div></div>`).join(''):'<div class="al ok">No tenés nada pendiente.</div>'}</div>
+    <div class="card"><h3>Para mirar</h3>${MIR.length?MIR.map(a=>`<div class="al ${a.t}">${a.h}</div>`).join(''):'<div class="al ok">Todo en orden.</div>'}</div>
+   </div>
+   <div>
+    <div class="card"><div class="row"><h3 class="sp" style="margin:0">Sucursales hoy</h3><button class="btn o sm" onclick="GERV='hoy';go('gerencia')">Ver Gerencia</button></div>
+     ${SUC.map(x=>{const c=gSem[x.sem];return`<div class="it"><span style="width:12px;height:12px;border-radius:99px;background:${c.c};flex:none"></span><div class="m"><b>${esc(x.s.nombre)}</b><span class="sm mut">${x.it.length?esc(x.it.slice(0,2).map(i=>i.area+': '+i.txt).join(' · '))+(x.it.length>2?` · y ${x.it.length-2} más`:''):'Todo en orden'}</span></div><span class="sm num">${money(x.venta)}</span></div>`}).join('')}
+     <p class="xs mut" style="margin-top:6px">El monto es la venta de hoy según los cierres enviados.</p></div>
+    <div class="card"><h3>Lo que el equipo tiene pendiente</h3><p class="xs mut" style="margin:-4px 0 6px">No es para que lo hagas vos: es para saber a quién reclamarle.</p>
+     ${FAL.length?FAL.map((x,i)=>`<div class="it"><div class="m"><b>${esc(x.t)} · ${x.n}</b><span class="sm mut">${esc(x.r)}${x.d?' · '+esc(x.d):''}</span></div><button class="btn o sm" onclick="dueAvisar(${i})">Avisar</button></div>`).join(''):'<div class="al ok">El equipo está al día.</div>'}</div>
+   </div>
+  </div>
+  <div class="card"><h3>Atajos</h3><div class="row" style="flex-wrap:wrap;gap:8px">
+   ${dueFijos().length?'<button class="btn y" onclick="dueSueldo()">💵 Sueldo / adelanto de dueño</button>':''}
+   <button class="btn o" onclick="ahoNuevo('egreso')">Gasto o retiro de la caja de ahorro</button>
+   <button class="btn o" onclick="ahoPreNuevo()">🤝 Préstamo a otro negocio</button>
+   <button class="btn o" onclick="actMover()">Mover plata a un activo</button>
+   <button class="btn o" onclick="go('mensajes')">Mandar un mensaje</button></div></div>`}
+
+/* ---------- PLATA: cajas del mes (negocio) ---------- */
+function ownCajasMes(){const m=SEL.mes,info=mesInfo(m)||{},est=info.estado||'abierto',R=metricas(m),sd=saldos(m);
+  const estTxt={abierto:'Abierto',pendiente:'Esperando tu aprobación',cerrado:'Cerrado'}[est]||est;
+  const fl=faltantes(m).length,env=(D.cie[m]||[]).filter(c=>c.estado==='enviado').length;
+  const ctas=CUENTAS_PAGO(),tot=ctas.reduce((a,c)=>a+(sd[c.id]||0),0);
+  const fp=fijosEstado(m).filter(e=>e.debe),vp=D.vou.filter(v=>v.estado==='pendiente'),dn=deudasNegocios();
+  const deuda=gSum(D.prv.map(p=>provDeuda(p.id).reduce((t,d)=>t+d.imp,0))),venc=gSum(D.prv.map(p=>provVencido(p.id).reduce((t,d)=>t+d.imp,0)));
+  const TIPO=t=>t==='pase_in'?'Pase recibido':t==='arendir'?'Caja de mantenimiento':(TIPOS.find(x=>x.id===t)||{n:t}).n;
+  const mv=(D.mov[m]||[]).slice().sort((a,b)=>(b.fecha+(b.ts||''))>(a.fecha+(a.ts||''))?1:-1).slice(0,12);
+  const fila=(l,r,sub,cls)=>`<div class="it"><div class="m"><b>${l}</b>${sub?`<span class="sm mut">${sub}</span>`:''}</div><b class="num ${cls||''}">${r}</b></div>`;
+  return`${cabMes('Cajas del mes')}${dueBtn()}
+  <p class="sm mut" style="margin-top:-6px">La plata del negocio de ${mesNombre(m)}. No se mezcla con la caja de ahorro: la ganancia pasa a la caja de ahorro recién cuando se aprueba el cierre del mes.</p>
+  <div class="card" style="${est==='pendiente'?'border:2px solid var(--yel)':''}"><div class="row" style="flex-wrap:wrap;gap:8px"><div class="sp"><div class="xs mut">${mesNombre(m)}</div><b style="font-size:18px">${estTxt}</b>${est!=='cerrado'?`<div class="sm mut">${fl?fl+' turno(s) sin cierre · ':''}${env} cierre(s) sin confirmar por Administración</div>`:''}</div>
+   ${est==='pendiente'?`<button class="btn y" onclick="ownVerCierre('${m}')">Revisar y aprobar el cierre</button>`:''}${est==='cerrado'?`<button class="btn o sm" onclick="mesReabrir('${m}')">Reabrir</button>`:''}</div></div>
+  <div class="grid g4" style="margin-bottom:14px"><div class="kpi hl"><div class="l">Total del mes</div><div class="v">${money(tot)}</div><div class="d">según el sistema, en todas las cuentas</div></div>
+   ${ctas.map(c=>`<div class="kpi" style="cursor:pointer" onclick="verLibro('${m}','${c.id}')"><div class="l">${esc(c.nombre)}</div><div class="v ${(sd[c.id]||0)<0?'dn':''}">${money(sd[c.id]||0)}</div><div class="d">Ver movimientos</div></div>`).join('')}</div>
+  <div class="grid g2" style="align-items:start">
+   <div class="card"><h3>De dónde sale la ganancia</h3>
+    ${fila('Venta confirmada',money(R.venta))}${R.otrosIng?fila('Otros ingresos','+ '+money(R.otrosIng),R.ventaNeg?'incluye venta a otros negocios '+money(R.ventaNeg):'sobrantes y otros'):''}
+    ${fila('Gastos','− '+money(R.gastos-R.desc),'fijos, variables, sueldos, mercadería y gastos de caja','dn')}${fila('Comisiones e impuestos','− '+money(R.desc),'','dn')}
+    ${fila('Resultado',money(R.resultado),R.venta?'margen '+pct(R.resultado/R.venta*100):'',R.resultado<0?'dn':'up')}
+    ${fila('Ganancia ya retirada en el mes',money(R.ganancia),'pasó a la caja de ahorro o a un activo antes del cierre')}
+    <p class="xs mut" style="margin-top:6px">El detalle completo está en Números → Resultado.</p></div>
+   <div><div class="card"><h3>Por cobrar y por pagar</h3>
+    ${fila('Vouchers sin cobrar',money(sum(vp)),vp.length+' voucher(s)')}
+    ${Object.entries(dn).filter(([k,v])=>Math.abs(v.nosDeben-v.debemos)>=1).map(([k,v])=>{const net=v.nosDeben-v.debemos;return fila(esc(k)+(net>0?' le debe a Havanna':': Havanna le debe'),money(Math.abs(net)),'préstamos y mercadería',net>0?'up':'dn')}).join('')}
+    ${fila('Gastos fijos sin pagar',money(fp.reduce((a,e)=>a+e.saldo,0)),fp.length+' gasto(s)')}
+    ${fila('Proveedores por pagar',money(deuda),venc?'de esto, ya para pagar '+money(venc):'nada vencido')}</div>
+   <div class="card"><h3>En las sucursales</h3>
+    <div class="it" style="cursor:pointer" onclick="verLibro('${m}','i:gastos')"><div class="m"><b>Gastos de caja</b><span class="sm mut">pagados con la caja del turno</span></div><b class="num">${money(sd['i:gastos']||0)}</b></div>
+    <div class="it" style="cursor:pointer" onclick="verLibro('${m}','i:anticipos')"><div class="m"><b>Vales de empleados</b><span class="sm mut">anticipos entregados en sucursal</span></div><b class="num">${money(sd['i:anticipos']||0)}</b></div>
+    <div class="it" style="cursor:pointer" onclick="verLibro('${m}','i:vouchers')"><div class="m"><b>Vouchers canjeados</b></div><b class="num">${money(sd['i:vouchers']||0)}</b></div></div></div>
+  </div>
+  <div class="card"><h3>Últimos movimientos de ${mesNombre(m)}</h3>${mv.length?`<div class="tw"><table class="t"><thead><tr><th>Fecha</th><th>Detalle</th><th>Tipo</th><th>Cuenta</th><th class="r">Monto</th></tr></thead><tbody>${mv.map(x=>`<tr><td class="sm">${fFecha(x.fecha)}</td><td class="sm"><b>${esc(x.proveedor||x.concepto||'')}</b>${x.proveedor&&x.concepto&&x.concepto!==x.proveedor?`<div class="xs mut">${esc(x.concepto)}</div>`:''}</td><td class="sm">${esc(TIPO(x.tipo))}${x.categoria?' · '+esc(x.categoria):''}</td><td class="sm">${esc(cuentaNom(x.cuenta))}</td><td class="r num">${money(x.monto)}</td></tr>`).join('')}</tbody></table></div><p class="xs mut">Tocando cada cuenta de arriba ves todos sus movimientos.</p>`:'<div class="empty">Todavía no hay movimientos.</div>'}</div>
+  <div class="card"><h3>Meses anteriores</h3>${D.mes.filter(x=>x.id!==m).slice(0,6).map(x=>`<div class="it"><div class="m"><b>${esc(mesNom(x.id))}</b><span class="xs mut">${x.estado==='cerrado'?'cerrado':x.estado==='pendiente'?'esperando aprobación':'abierto'} · ganancia retirada</span></div><b class="num">${money(sum((D.mov[x.id]||[]).filter(y=>y.tipo==='ganancia')))}</b>${S.role==='dueno'&&x.estado==='cerrado'?` <button class="btn sm o" onclick="mesReabrir('${x.id}')">Reabrir</button>`:''}</div>`).join('')||'<div class="empty">—</div>'}<p class="xs mut">Solo se muestran los meses cargados en pantalla.</p></div>`}
+
+/* ---------- PLATA: cuadre de cuentas (lo que hay de verdad contra el sistema) ---------- */
+function ownCuadre(){const m=SEL.mes;
+  const ctas=CUENTAS_PAGO().map(c=>{const neg=mesesConPlata().reduce((a,x)=>a+(saldos(x)[c.id]||0),0);
+    if(c.id==='efectivo'){const cs=[...mesesConPlata().map(x=>D.rtEf[x]),D.rtEf.ahorro].filter(Boolean);const aho=ahorroSaldo('efectivo');const tot=cs.reduce((a,r)=>a+n(r.monto),0);const debe=neg+aho;return{c,neg,R:{re:cs.length?{monto:tot}:null,aho,dif:cs.length?tot-debe:null}}}
+    return{c,R:reparto(mesSaldo()||m,c.id),neg}});
+  const totReal=ctas.reduce((a,x)=>a+(x.R.re?n(x.R.re.monto):0),0),faltan=ctas.filter(x=>!x.R.re&&(Math.abs(x.neg)>=1||Math.abs(x.R.aho)>=1));
+  return`<div class="row" style="margin-bottom:12px"><h2 class="sec sp" style="margin:0">Cuadre de cuentas</h2></div>
+  <div class="card"><h3>Lo que hay realmente</h3><p class="sm mut" style="margin-top:-6px">Es el único lugar donde se juntan las dos cajas: el efectivo contado y el saldo de cada banco son de las dos. Debajo de cada cuenta, cuánto es de la caja de ahorro de los dueños y cuánto del negocio (meses abiertos), y si cuadra.</p>
+  <div class="grid g4">
+   <div class="kpi hl"><div class="l">Total en todas las cuentas</div><div class="v">${money(totReal)}</div><div class="d">${faltan.length?`Sin saldo cargado: ${faltan.map(x=>esc(x.c.nombre)).join(', ')}`:'Todas las cuentas cargadas'}</div></div>
+   ${ctas.map(x=>`<div class="kpi"><div class="l">${esc(x.c.nombre)}</div><div class="v">${x.R.re?money(x.R.re.monto):(Math.abs(x.neg)<1&&Math.abs(x.R.aho)<1?money(0):'<span class="mut" style="font-size:16px">Saldo sin cargar</span>')}</div><div class="d">Ahorro dueños ${money(x.R.aho)}<br>Negocio ${money(x.neg)}${x.R.dif==null?'':Math.abs(x.R.dif)<1?' · <span class="up b">cuadra</span>':` · <span class="${x.R.dif<0?'dn':'up'} b">${x.R.dif<0?'falta':'sobra'} ${money(Math.abs(x.R.dif))}</span>`}</div></div>`).join('')}
+  </div></div>`}
+
+/* ---------- NÚMEROS: agregado al Resultado (estado de resultado, cómo viene el mes, por sucursal) ---------- */
+function resExtraHTML(m){if(!S||S.role!=='dueno')return'';const R=metricas(m),Rp=metricas(mesPrev(m)),esAct=m===mesDe(hoy()),P=esAct?proyMes(m):null,CL=costoLaboralMes(m),clTot=gSum(Object.values(CL.porSuc))+CL.general;
+  const cats=Object.entries(R.porCat).filter(([k,v])=>Math.abs(v)>=1).sort((a,b)=>b[1]-a[1]);const pv=v=>R.venta?pct(v/R.venta*100):'—';
+  const conf=(D.cie[m]||[]).filter(x=>x.estado==='confirmado');let dif=0;conf.forEach(x=>{const r=calc(x);if(r.dif!=null)dif+=r.dif});
+  return`<div class="grid g2" style="align-items:start">
+   <div class="card"><h3>Cómo se llega al resultado</h3><div class="tw"><table class="t"><thead><tr><th>Concepto</th><th class="r">Monto</th><th class="r">% venta</th></tr></thead><tbody>
+    <tr><td><b>Venta confirmada</b></td><td class="r num b">${money(R.venta)}</td><td class="r">100%</td></tr>
+    ${R.otrosIng?`<tr><td>+ Otros ingresos</td><td class="r num">${money(R.otrosIng)}</td><td class="r">${pv(R.otrosIng)}</td></tr>`:''}
+    ${cats.map(([k,v])=>v<0?`<tr><td>+ ${esc(k)} <span class="xs mut">(consumos internos y retiros de socios pasados a costo)</span></td><td class="r num">${money(-v)}</td><td class="r">${pv(-v)}</td></tr>`:`<tr><td>− ${esc(k)}</td><td class="r num">${money(v)}</td><td class="r">${pv(v)}</td></tr>`).join('')}
+    <tr class="tot"><td>Resultado</td><td class="r">${money(R.resultado)}</td><td class="r">${pv(R.resultado)}</td></tr></tbody></table></div></div>
+   <div class="card"><h3>Cómo viene el mes</h3>
+    ${P?`<div class="it"><div class="m"><b>Proyección de venta</b>${proyDet(P).replace(/class="d mut"/g,'class="sm mut"').replace(/class="d"/g,'class="sm"')}</div><b class="num">${money(P.proy)}</b></div>`:''}
+    <div class="it"><div class="m"><b>Comensales · ticket promedio</b><span class="sm mut">${varPct(R.ticket,Rp.ticket)} el ticket</span></div><b class="num">${R.comensales.toLocaleString('es-AR')} · ${money(R.ticket)}</b></div>
+    <div class="it"><div class="m"><b>Costo laboral</b><span class="sm mut">${R.venta?pct(clTot/R.venta*100)+' de la venta':''}</span></div><b class="num">${money(clTot)}</b></div>
+    <div class="it"><div class="m"><b>Comisiones e impuestos</b><span class="sm mut">${R.venta?pct(R.desc/R.venta*100)+' de la venta':''}</span></div><b class="num">${money(R.desc)}</b></div>
+    <div class="it"><div class="m"><b>Diferencias de caja</b><span class="sm mut">${conf.length} cierres confirmados</span></div><b class="num ${dif<0?'dn':''}">${money(dif)}</b></div>
+    <div class="it"><div class="m"><b>Gastos sin factura</b><span class="sm mut">${R.sinFactura.length} gasto(s)</span></div><b class="num">${money(sum(R.sinFactura))}</b></div></div>
+  </div>
+  <div class="card"><h3>Por sucursal</h3><div class="tw"><table class="t"><thead><tr><th>Sucursal</th><th class="r">Venta</th><th class="r">vs ${mesNombre(mesPrev(m))}</th><th class="r">Ticket</th><th class="r">Costo laboral</th><th class="r">Resultado</th><th class="r">Margen</th></tr></thead><tbody>
+   ${CFG.sucursales.map(s=>{const x=R.porSuc[s.id]||{},p=Rp.porSuc[s.id]||{},cl=CL.porSuc[s.id]||0;if(!x.venta&&!p.venta&&!x.resultado)return'';return`<tr><td><b>${esc(s.nombre)}</b></td><td class="r num">${money(x.venta||0)}</td><td class="r">${p.venta?varPct(x.venta,p.venta):'—'}</td><td class="r num">${x.comensales?money(x.ventaConCom/x.comensales):'—'}</td><td class="r">${x.venta?pct(cl/x.venta*100):'—'}</td><td class="r num ${n(x.resultado)<0?'dn':''}">${money(x.resultado||0)}</td><td class="r">${x.venta?pct(x.resultado/x.venta*100):'—'}</td></tr>`}).join('')}
+  </tbody></table></div><p class="xs mut">El resultado de cada sucursal incluye su parte de los gastos generales según lo que vendió. No incluye otros ingresos.</p></div>`}
+
+/* ---------- ÁREAS: tablero ---------- */
+function ownAreas(){const m=SEL.mes,h=hoy();const SUC=CFG.sucursales.filter(s=>s.id!=='std').map(gHoySuc),rojos=SUC.filter(x=>x.sem==='rojo').length,todos=SUC.reduce((t,x)=>t+x.it.length,0);
+  let aus=0;(D.asi[m]||[]).forEach(a=>(a.items||[]).forEach(x=>{if(x.estado==='ausente'&&!x.motivo)aus++}));
+  const antSol=D.ant.filter(a=>a.estado==='solicitado').length,liq=D.liq[m],sinGri=CFG.sucursales.filter(s=>s.id!=='std'&&s.control!==false&&!griHayDia(h,s.id)).map(s=>s.nombre);
+  const atr=D.ocp.filter(o=>ocEstado(o)==='atrasado').length,sk=skcPend().length,decV=gSum(D.dec.filter(d=>mesDe(d.fecha)===m).map(d=>decValor(d)||0));
+  const recAb=D.rec.filter(r=>r.estado!=='resuelto').length,falAb=D.fal.filter(x=>falEstado(x)!=='cerrada'),falV=falAb.filter(x=>falEstado(x)==='vencida').length;
+  const mP=D.mtt.filter(t=>!t.done),mV=mP.filter(mtVencida);
+  const mkA=mkAutPend().length,mkAt=D.mkc.filter(mkAtrasada).length,mkCamp=mkCampDia(h).length,mkGas=gSum((D.mov[m]||[]).filter(x=>x.tipo==='gasto'&&x.categoria==='Marketing').map(x=>x.monto));
+  const col={rojo:'#b42318',amarillo:'#b54708',verde:'#1a7f37'};
+  const card=(nom,sem,est,items,resp,ir)=>`<div class="card" style="margin:0;border-top:6px solid ${col[sem]};display:flex;flex-direction:column"><div class="row"><h3 class="sp" style="margin:0">${nom}</h3><span class="xs mut">${resp}</span></div><div class="sm mut" style="margin:2px 0 6px">${est}</div>${items.map(([a,b])=>`<div class="row sm" style="padding:5px 0;border-top:1px solid var(--line)"><span class="sp">${a}</span><b>${b}</b></div>`).join('')}<span class="sp"></span><button class="btn o sm" style="margin-top:10px;align-self:flex-start" onclick="${ir}">Entrar →</button></div>`;
+  return`<div class="row" style="margin-bottom:6px"><h2 class="sec sp" style="margin:0">Cómo está cada área</h2>${mesSelect('setMes(this.value)')}</div>
+  <p class="sm mut">Rojo: hay algo vencido o urgente. Naranja: hay pendientes. Verde: al día.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+   ${card('Gerencia',rojos?'rojo':todos?'amarillo':'verde',rojos?`${rojos} sucursal(es) en rojo hoy`:todos?'Hay cosas para resolver hoy':'Todo en orden hoy',[['Cosas para resolver hoy',todos],['Sucursales en rojo',rojos+' de '+SUC.length]],'Gerente',"GERV='hoy';go('gerencia')")}
+   ${card('Personal',antSol||sinGri.length?'amarillo':'verde',antSol?antSol+' anticipo(s) para aprobar':'Asistencia y sueldos',[['Ausencias sin aviso en el mes',aus],['Anticipos para aprobar',antSol],['Sueldos de '+mesNombre(m),liq?({borrador:'en armado',enviada:'enviados a pagar',pagada:'pagados'}[liq.estado]||liq.estado):'sin liquidar'],['Sin grilla hoy',sinGri.length?esc(sinGri.join(', ')):'—']],'RRHH',"go('personal')")}
+   ${card('Abastecimiento y stock',atr||sk>10?'rojo':sk?'amarillo':'verde',sk?sk+' control(es) de stock atrasados':'Al día',[['Controles de stock atrasados',sk],['Pedidos atrasados',atr],['Decomisos del mes',money(decV)]],'Compras · Stock',"go('compras')")}
+   ${card('Calidad',falV?'rojo':recAb||falAb.length?'amarillo':'verde',recAb?recAb+' reclamo(s) sin resolver':'Al día',[['Reclamos de clientes sin resolver',recAb],['Fallas abiertas',falAb.length+(falV?' · '+falV+' vencidas':'')]],'Calidad',"go('calidad')")}
+   ${card('Mantenimiento',mV.length?'rojo':mP.length?'amarillo':'verde',mV.length?mV.length+' tarea(s) vencida(s)':'Al día',[['Vencidas',mV.length],['Urgentes pendientes',mP.filter(t=>t.urg==='alta').length],['Pendientes en total',mP.length]],'Mantenimiento',"go('mant')")}
+   ${card('Marketing',mkAt?'rojo':mkA?'amarillo':'verde',mkA?mkA+' para autorizar':'Al día',[['Para autorizar',mkA],['Contenidos atrasados',mkAt],['Campañas activas hoy',mkCamp],['Gastado en '+mesNombre(m),money(mkGas)]],'Marketing',"go('marketing')")}
+   ${card('Carta','verde','Precios y costos',[['% de costo de la mercadería',pct(pctCosto(mesDe(h))||0)]],'Compras',"go('carta')")}
+  </div>`}
+
+function ownTabsViejo(){
   const ant=D.ant.filter(a=>a.estado==='solicitado').length;
   return[{id:'gerencia',n:'Gerencia',bd:S&&S.role==='gerente'?(CFG.sucursales.filter(s=>s.id!=='std').map(gHoySuc).filter(x=>x.sem==='rojo').length||''):''},{id:'resumen',n:'Resumen'},{id:'reporte',n:'Reporte mensual'},...(S&&S.role==='dueno'?[{id:'comp',n:'Comparativo'}]:[]),{id:'ventas',n:'Ventas'},{id:'gastos',n:'Gastos'},{id:'sucursales',n:'Sucursales'},{id:'plata',n:'Plata'},{id:'ahorro',n:'Cajas de ahorro'},{id:'control',n:'Control'},{id:'personal',n:'Personal',bd:ant||''},{id:'rrhh',n:'RRHH'},{id:'compras',n:'Abastecimiento'},{id:'stockctl',n:'Control de stock',bd:skcPend().length||''},{id:'calidad',n:'Calidad'},{id:'mant',n:'Mantenimiento',bd:D.mtt.filter(mtVencida).length||''},{id:'marketing',n:'Marketing',bd:(D.mkc.filter(mkAtrasada).length+(S&&S.role==='dueno'?mkAutPend().length:0))||''},{id:'carta',n:'Carta'},...(S&&S.role==='dueno'?[{id:'cheques',n:'Cheques',bd:chqAlerta().length||''}]:[]),{id:'mensajes',n:'Mensajes',bd:noLeidos()||''},{id:'config',n:'Configuración'}].filter(t=>!esGer()||!GER_OCULTO.includes(t.id));
 }
-function ownBody(){if(esGer()&&GER_OCULTO.includes(tab))tab='gerencia';if(esGer()&&tab==='reporte')return ownReporteGer();if(esGer()&&tab==='sucursales')return ownSucursalesGer();switch(tab){case'reporte':return ownReporte();case'comp':if(S.role!=='dueno')return ownResumen();setTimeout(()=>cmpGuardarMesCerrado(),50);return cmpHTML();case'vdia':return vdiaHTML();case'ventas':return ownVentas();case'gastos':return ownGastos();case'sucursales':return ownSucursales();case'plata':return ownPlata();case'ahorro':return ownAhorro();case'control':return ownControl();case'personal':return ownPersonal();case'rrhh':return`<div class="seg" style="margin-bottom:14px">${rrhhTabs().filter(t=>t.id!=='mensajes').map(t=>`<button class="${RTAB===t.id?'on':''}" onclick="RTAB='${t.id}';render()">${t.n}${t.bd?` <span class="bd">${t.bd}</span>`:''}</button>`).join('')}</div>${rrhhBody(RTAB)}`;case'compras':return comprasBodyOwn();case'stockctl':return gerStockHTML();case'calidad':return calidadOwn();case'gerencia':return gerencia();case'mant':return mantOwn();case'marketing':return mktOwn();case'carta':return cartaHTML();case'cheques':return S.role==='dueno'?chqHTML():ownResumen();case'mensajes':return mensajesHTML();case'config':return ownConfig();default:return ownResumen()}}
+function ownBody(){if(esDueMenu()){if(tab==='plata')tab='cajames';if(tab==='resumen'||ownSubDe(tab)===tab||OWN_ALIAS[tab])return ownSubBar()+ownDoble()+ownBodyViejo()}return ownBodyViejo()}
+function ownBodyViejo(){if(esGer()&&GER_OCULTO.includes(tab))tab='gerencia';if(esGer()&&tab==='reporte')return ownReporteGer();if(esGer()&&tab==='sucursales')return ownSucursalesGer();switch(tab){case'reporte':return ownReporte();case'cajames':return S.role==='dueno'?ownCajasMes():ownResumen();case'cuadre':return S.role==='dueno'?ownCuadre():ownResumen();case'areas':return S.role==='dueno'?ownAreas():ownResumen();case'resumen':return S.role==='dueno'?ownInicio():ownResumen();case'comp':if(S.role!=='dueno')return ownResumen();setTimeout(()=>cmpGuardarMesCerrado(),50);return cmpHTML();case'vdia':return vdiaHTML();case'ventas':return ownVentas();case'gastos':return ownGastos();case'sucursales':return ownSucursales();case'plata':return ownPlata();case'ahorro':return ownAhorro();case'control':return ownControl();case'personal':return ownPersonal();case'rrhh':return`<div class="seg" style="margin-bottom:14px">${rrhhTabs().filter(t=>t.id!=='mensajes').map(t=>`<button class="${RTAB===t.id?'on':''}" onclick="RTAB='${t.id}';render()">${t.n}${t.bd?` <span class="bd">${t.bd}</span>`:''}</button>`).join('')}</div>${rrhhBody(RTAB)}`;case'compras':return comprasBodyOwn();case'stockctl':return gerStockHTML();case'calidad':return calidadOwn();case'gerencia':return gerencia();case'mant':return mantOwn();case'marketing':return mktOwn();case'carta':return cartaHTML();case'cheques':return S.role==='dueno'?chqHTML():ownResumen();case'mensajes':return mensajesHTML();case'config':return ownConfig();default:return ownResumen()}}
 /* ===================================================================== CHEQUES Y PAGOS (dueños; los de Havanna también Administración) */
 const CHQ_DEF={cuentas:['SOLMAJU (Havanna) · Banco Nación'],negocios:['Havanna','Padel One','Club Outdoor','Personal'],aviso:3};
 let CHQC=null,CHQV='cal',CHQM=null,CHQF={neg:'',cta:'',est:'pend'},CHQN=null;
@@ -4840,7 +5018,7 @@ function ownReporte(){
   const optM=sel=>ms.map(m=>`<option value="${m}" ${m===sel?'selected':''}>${mesNom(m)}</option>`).join('');
   const filas=lista.map(m=>repMes(m));
   const tot=k=>filas.reduce((a,x)=>a+k(x),0);
-  return`<div class="pagehead"><div><div class="crumb">Dueños</div><h2 class="sec">Reporte mensual</h2></div><span class="sp"></span>${mesSelect('setMes(this.value)')}</div>
+  return`<div class="pagehead"><div><div class="crumb">Números</div><h2 class="sec">Resultado</h2></div><span class="sp"></span>${mesSelect('setMes(this.value)')}</div>
   <div class="card"><div class="row"><h3 class="sp" style="margin:0">${mesNom(X.m)}</h3>${est}</div>
    <div class="grid g4" style="margin-top:14px">
     <div class="kpi"><div class="l">Venta</div><div class="v">${money(R.venta)}</div><div class="d">${R.comensales.toLocaleString('es-AR')} comensales · ticket ${money(R.ticket)}</div></div>
@@ -4848,6 +5026,7 @@ function ownReporte(){
     <div class="kpi hl"><div class="l">Ganancia del mes</div><div class="v">${money(R.resultado)}</div><div class="d">${R.venta?'Margen '+pct(R.resultado/R.venta*100):''}</div></div>
     <div class="kpi"><div class="l">Ganancia retirada</div><div class="v">${money(X.retTot)}</div><div class="d">${X.estado==='cerrado'?'Mes cerrado':'El retiro final se hace al cerrar'}</div></div>
    </div></div>
+  ${resExtraHTML(X.m)}
   <div class="grid g2">
    <div class="card"><h3>Ganancia retirada</h3><table class="t">
     <tr><td>Anticipada durante el mes</td><td class="r num">${money(X.ret.ant)}</td></tr>
@@ -5197,5 +5376,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-16a -->
+<!-- version 2026-11-16b -->
 </html>
