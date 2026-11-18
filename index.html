@@ -1256,7 +1256,7 @@ function empBody(){const sid=empSucHoy();const e=emp(S.empId)||{};const nom=esc(
   if(!sid)return`<h2 class="sec">Hola, ${nom}</h2><div class="empty">Hoy no figurás en la grilla de ninguna sucursal.</div>`;
   const t=tA,tur=t?t.turno:(new Date().getHours()>=15?'Tarde':'Mañana'),lec=lecDe(S.empId,hoy(),t?t.turno:''),u=stkPrevio(sid,hoy(),tur),ok=lecVigente(lec,u);
   const msgP=empMsgs(S.empId,sid).some(m=>!empMsgLeido(m,S.empId));
-  return`<h2 class="sec">Hola, ${nom}</h2>${empMsgsHTML(S.empId,sid)}${nprEmpHTML(S.empId,sid)}${lec&&!ok?'<div class="al w"><b>Hay stock nuevo.</b> El responsable cargó el stock del turno anterior después de que leíste. Leelo de nuevo.</div>':''}${stockAvisosHTML(sid,hoy(),tur)}
+  return`<h2 class="sec">Hola, ${nom}</h2>${empMsgsHTML(S.empId,sid)}${mkCampSucHTML(sid,false)}${nprEmpHTML(S.empId,sid)}${lec&&!ok?'<div class="al w"><b>Hay stock nuevo.</b> El responsable cargó el stock del turno anterior después de que leíste. Leelo de nuevo.</div>':''}${stockAvisosHTML(sid,hoy(),tur)}
   ${ok?`<div class="al ok" style="text-align:center">✓ Leído hoy a las ${new Date(lec.ts).toTimeString().slice(0,5)}</div>`:(msgP?`<button class="btn full" style="font-size:17px;padding:16px;opacity:.5" onclick="empLeido()">Ya lo leí</button><p class="xs" style="text-align:center;color:#b42318">Primero leé los mensajes de arriba.</p>`:`<button class="btn y full" style="font-size:17px;padding:16px" onclick="empLeido()">Ya lo leí</button><p class="xs mut" style="text-align:center">RRHH ve quién lo leyó.</p>`)}`}
 
 /* ===================================================================== RRHH */
@@ -1701,6 +1701,15 @@ function encBody(){
 const CART_SUCS=['rep','ill','vv'];
 const REC_FIJOS=[{id:'cart-apagar',hora:'07:30',texto:'💡 Apagar carteles',turno:'Mañana',sucursales:CART_SUCS,dias:[],fijo:true},{id:'cart-prender',hora:'18:00',texto:'💡 Prender carteles',turno:'Tarde',sucursales:CART_SUCS,dias:[],fijo:true}];
 function recordatoriosHoy(){const d=new Date().getDay();return [...REC_FIJOS,...CFG.recordatorios].filter(r=>(!r.sucursales||!r.sucursales.length||r.sucursales.includes(S.suc))&&(!r.dias||!r.dias.length||r.dias.includes(d))&&(!r.turno||r.turno==='Todos'||r.turno===S.turno)).sort((a,b)=>a.hora<b.hora?-1:1)}
+/* acciones de marketing aprobadas que ve la sucursal (encargados, cajeros y empleados) */
+const mkCampEnSuc=(c,sc)=>mkCampOk(c)&&(!c.sucs||!c.sucs.length||c.sucs.includes(sc));
+const mkCampHoySuc=(sc,f)=>D.mkm.filter(c=>mkCampEnSuc(c,sc)&&c.desde<=f&&(c.hasta||c.desde)>=f&&(!c.dias||c.dias.includes(mkDow(f))));
+function mkCampSucHTML(sc,prox){if(!sc)return'';const h=hoy(),hoyL=mkCampHoySuc(sc,h);
+  const pr=prox?D.mkm.filter(c=>mkCampEnSuc(c,sc)&&!hoyL.includes(c)&&(c.hasta||c.desde)>h&&c.desde<=sumDias(h,7)).sort((a,b)=>a.desde<b.desde?-1:1):[];
+  if(!hoyL.length&&!pr.length)return'';
+  const item=(c,esHoy)=>`<div class="it" style="align-items:flex-start"><div class="m"><b>${esc(c.nombre)}</b><span class="sm mut">${esc(c.tipo||'')}${esHoy?` · hasta el ${fFecha(c.hasta||c.desde)}`:` · del ${fFecha(c.desde)} al ${fFecha(c.hasta||c.desde)}`} · ${mkDiasTxt(c)}</span>${c.objetivo?`<span class="sm" style="display:block;margin-top:3px"><b>Objetivo:</b> ${esc(c.objetivo)}</span>`:''}${c.meta?`<span class="sm" style="display:block"><b>Meta:</b> ${esc(c.meta)}</span>`:''}${c.notas?`<span class="sm" style="display:block;white-space:pre-wrap"><b>Qué hacer:</b> ${esc(c.notas)}</span>`:''}</div></div>`;
+  return`<div class="card" style="border-left:4px solid var(--yel)"><h3>📣 Acciones de marketing de hoy</h3>${hoyL.length?hoyL.map(c=>item(c,true)).join(''):'<div class="sm mut">Hoy no hay acciones en esta sucursal.</div>'}
+   ${pr.length?`<h4 style="margin:12px 0 4px">Próximos 7 días</h4>${pr.map(c=>item(c,false)).join('')}`:''}</div>`}
 function encInicio(){
   const recs=recordatoriosHoy(),now=ahora();
   const m=mesDe(hoy()),f=hoy();
@@ -1715,6 +1724,7 @@ function encInicio(){
    <div class="kpi"><div class="l">Cierre de turno</div><div class="v" style="font-size:18px">${mio?(mio.estado==='confirmado'?'<span class="pill p-ok">Confirmado</span>':'<span class="pill p-i">Enviado</span>'):'<span class="pill p-n">Pendiente</span>'}</div></div>
    <div class="kpi"><div class="l">Mensajes nuevos</div><div class="v">${nl}</div></div>
   </div>
+  ${mkCampSucHTML(S.suc,true)}
   <div class="card"><h3>Recordatorios de hoy</h3>${recs.length?recs.map(r=>{const done=D.rdo[r.id+'|'+S.turno];const venc=!done&&r.hora<=now;return`<div class="it"><div class="m"><b>${esc(r.hora)} · ${esc(r.texto)}</b>${done?`<span class="xs mut">Hecho a las ${esc(done.hora)}</span>`:venc?'<span class="pill p-bad">Ahora</span>':''}</div>${done?'<span class="pill p-ok">✓</span>':`<button class="btn sm ${venc?'y':'o'}" onclick="recHecho('${r.id}')">Hecho</button>`}</div>`}).join(''):'<div class="empty">No hay recordatorios para hoy.</div>'}
   <p class="xs mut" style="margin-top:8px">La alarma suena mientras el sistema esté abierto en este celular.</p></div>
   ${antOk.length?`<div class="al i">Tenés ${antOk.length} anticipo(s) aprobado(s) para entregar. Se cargan como vale en el cierre de turno.</div>`:''}
@@ -5399,5 +5409,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-17a -->
+<!-- version 2026-11-18a -->
 </html>
