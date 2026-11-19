@@ -3822,10 +3822,10 @@ async function antPedir(){const e=emp($('#an-emp').value);const monto=parseNum($
 /* certificados */
 let CERTF=null;
 function encCert(){
-  const eq=CFG.empleados.filter(e=>e.activo!==false&&(e.suc===S.suc||e.suc==='general'));
+  const act=CFG.empleados.filter(e=>e.activo!==false).sort((a,b)=>a.nombre<b.nombre?-1:1),eq=act.filter(e=>e.suc===S.suc||e.suc==='general'),otros=act.filter(e=>!(e.suc===S.suc||e.suc==='general'));
   const ls=D.cert.filter(c=>c.suc===S.suc).sort((a,b)=>a.ts<b.ts?1:-1).slice(0,20);
   return`<h2 class="sec">Certificados médicos</h2><div class="card"><div class="grid g2">
-  <div class="fld"><label class="f">Empleado</label><select class="in" id="ce-emp">${eq.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}</select></div>
+  <div class="fld"><label class="f">Empleado</label><select class="in" id="ce-emp"><option value="">Elegí el empleado…</option><optgroup label="${esc(suc(S.suc).nombre)}">${eq.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}</optgroup>${otros.length?`<optgroup label="Empleados de otras sucursales">${otros.map(e=>`<option value="${e.id}">${esc(e.nombre)} · ${esc(suc(e.suc).nombre)}</option>`).join('')}</optgroup>`:''}</select></div>
   <div class="fld"><label class="f">Observaciones</label><input class="in" id="ce-obs"></div>
   <div class="fld"><label class="f">Desde</label><input class="in" type="date" id="ce-d" value="${hoy()}"></div>
   <div class="fld"><label class="f">Hasta</label><input class="in" type="date" id="ce-h" value="${hoy()}"></div></div>
@@ -3833,9 +3833,10 @@ function encCert(){
   <div class="card"><h3>Cargados</h3>${ls.length?ls.map(c=>`<div class="it"><div class="fotos">${fotoThumbs([c.foto])}</div><div class="m"><b>${esc(c.nombre)}</b><span class="sm mut">${fFecha(c.desde)} al ${fFecha(c.hasta)} ${esc(c.obs||'')}</span></div></div>`).join(''):'<div class="empty">No hay certificados cargados.</div>'}</div>`;
 }
 async function certFoto(inp){if(inp.files[0]){CERTF=await compress(inp.files[0]);render()}}
-async function certGuardar(){const e=emp($('#ce-emp').value);if(!e)return toast('Elegí el empleado',true);if(!CERTF)return toast('Falta la foto del certificado',true);
-  const vals={d:$('#ce-d').value,h:$('#ce-h').value,o:$('#ce-obs').value};
-  await safe(async()=>{const foto=await saveFoto(CERTF);const c={id:uid(),empId:e.id,nombre:e.nombre,suc:S.suc,desde:vals.d,hasta:vals.h,obs:vals.o,foto,por:S.nombre,ts:new Date().toISOString()};await DB.set('cert:'+c.id,c);D.cert.push(c);await enviarMsg('rrhh',`Certificado médico de ${e.nombre} (${fFecha(vals.d)} al ${fFecha(vals.h)})`,{foto})},'Certificado enviado');CERTF=null;render()}
+async function certGuardar(){return unaVez('cert',async()=>{const e=emp($('#ce-emp').value);if(!e)return toast('Elegí el empleado',true);if(!CERTF)return toast('Falta la foto del certificado',true);
+  const vals={d:$('#ce-d').value,h:$('#ce-h').value,o:$('#ce-obs').value};if(!vals.d||!vals.h)return toast('Poné las dos fechas',true);if(vals.h<vals.d)return toast('"Hasta" no puede ser antes de "Desde"',true);
+  const dup=D.cert.find(c=>c.empId===e.id&&c.desde===vals.d&&c.hasta===vals.h);if(dup)return toast(`Ese certificado ya está cargado (${e.nombre}, ${fFecha(vals.d)} al ${fFecha(vals.h)}${dup.por?', lo cargó '+dup.por:''}). No hace falta cargarlo de nuevo.`,true);
+  await safe(async()=>{const foto=await saveFoto(CERTF);const c={id:uid(),empId:e.id,nombre:e.nombre,suc:S.suc,desde:vals.d,hasta:vals.h,obs:vals.o,foto,por:S.nombre,ts:new Date().toISOString()};await DB.set('cert:'+c.id,c);D.cert.push(c);await enviarMsg('rrhh',`Certificado médico de ${e.nombre} (${fFecha(vals.d)} al ${fFecha(vals.h)})`,{foto})},'Certificado enviado');CERTF=null;render()})}
 
 /* ===================================================================== ADMINISTRACIÓN */
 function admTabs(){
@@ -5519,5 +5520,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-19b -->
+<!-- version 2026-11-19c -->
 </html>
