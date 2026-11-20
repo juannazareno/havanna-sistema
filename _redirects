@@ -1,0 +1,2 @@
+# Camino alternativo a la base de datos (por si un proveedor de internet bloquea supabase.co)
+/rest/v1/*  https://nibdzgmeynkfuqoszorq.supabase.co/rest/v1/:splat  200
