@@ -260,6 +260,11 @@ const P='hv1:';
 let LOCAL=/[?&]local=1/.test(location.search);const SIN_LIB=!LOCAL&&typeof supabase==='undefined';
 let sb=null;
 if(!LOCAL){try{sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){console.error(e)}}
+/* Camino alternativo: si el internet del lugar no deja llegar a supabase.co, el sistema habla con la base
+   a través de su propia dirección de Netlify (que reenvía a la misma base). Los datos son los mismos. */
+const SB_ALT='https://gestion-havanna-catamarca.netlify.app';let SB_VIA='directo';
+async function sbProbar(u){try{const c=new AbortController();const t=setTimeout(()=>c.abort(),7000);const r=await fetch(u+'/rest/v1/kv?select=key&limit=1',{headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY},cache:'no-store',signal:c.signal});clearTimeout(t);return r.ok}catch(e){return false}}
+async function sbElegirCamino(){if(LOCAL||typeof supabase==='undefined')return;if(await sbProbar(SB_URL)){SB_VIA='directo';return}if(await sbProbar(SB_ALT)){try{sb=supabase.createClient(SB_ALT,SB_KEY);SB_VIA='alternativo';console.warn('Base de datos por camino alternativo')}catch(e){console.error(e)}}}
 
 const MEM={};const LS={getItem(k){try{return localStorage.getItem(k)}catch(e){return k in MEM?MEM[k]:null}},setItem(k,v){try{localStorage.setItem(k,v)}catch(e){MEM[k]=v}},removeItem(k){try{localStorage.removeItem(k)}catch(e){delete MEM[k]}},keys(){try{const a=[];for(let i=0;i<localStorage.length;i++)a.push(localStorage.key(i));return a}catch(e){return Object.keys(MEM)}}};
 const errTxt=e=>e&&(e.message||e.msg||e.error_description||e.hint||e.code)?(e.message||e.msg||e.error_description||e.hint||e.code):String(e);
@@ -5838,7 +5843,7 @@ async function modoPrueba(){sb=null;LOCAL=true;await loadConfig();view='home';re
 const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',calidad:'tablero',mant:'tareas',mkt:'cal',stock:'controles',emp:'inicio',gerente:'gerencia',dueno:'resumen'};
 (async()=>{
   if(SIN_LIB){$('#app').innerHTML='<div class="loading">No se pudo cargar la conexión con la nube (puede ser internet lento o cortado).<br><br>No cargues nada hasta que se conecte.<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
-  try{await loadConfig()}catch(e){console.error(e);$('#app').innerHTML='<div class="loading">No se pudo conectar con la base de datos.<br><br>Motivo: <b>'+esc(errTxt(e))+'</b><br><br>Revisá internet y recargá. Si sigue igual, puede que el proyecto de Supabase esté pausado: entrá a Supabase y tocá "Resume project".<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
+  try{await sbElegirCamino();await loadConfig()}catch(e){console.error(e);$('#app').innerHTML='<div class="loading">No se pudo conectar con la base de datos.<br><br>Motivo: <b>'+esc(errTxt(e))+'</b><br><br>Revisá internet y recargá. Si sigue igual, puede que el proyecto de Supabase esté pausado: entrá a Supabase y tocá "Resume project".<br><br><button class="btn y" onclick="location.reload()">Volver a intentar</button></div>';return}
   S=loadSession();
   try{const rc=localStorage.getItem('hg-recarga');if(rc){localStorage.removeItem('hg-recarga');if(rc==='version')setTimeout(()=>toast('Se actualizó el sistema'),600)}}catch(e){}
   try{const u=+localStorage.getItem('hg-ult')||0;if(S&&!(S.role==='enc'||S.role==='emp')&&u&&Date.now()-u>=OFI_CIERRE){S=null;localStorage.removeItem('hg-session');setTimeout(()=>toast('Se cerró la sesión por 12 horas sin uso. Volvé a entrar con tu clave.'),600)}else if(u&&Date.now()-u<OFI_CIERRE)ULT_ACT=Math.max(ULT_ACT,u)}catch(e){}
@@ -5851,5 +5856,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-19d -->
+<!-- version 2026-11-20a -->
 </html>
