@@ -1020,7 +1020,8 @@ function misMensajes(){const ids=inboxIds();return D.msg.filter(m=>ids.includes(
 function noLeidos(){return misMensajes().filter(m=>!m.leido).length}
 function remitente(){if(S.role==='compras')return'Compras';if(S.role==='stock')return'Control de stock';if(S.role==='mkt')return'Marketing';if(S.role==='mant')return'Mantenimiento';if(S.role==='calidad')return'Calidad';if(S.role==='mant')return'Mantenimiento';if(S.role==='emp')return S.nombre+' (empleado)';return S.role==='enc'?`${S.nombre} (${suc(S.suc).nombre} · ${S.turno})`:S.role==='admin'?'Administración':S.role==='rrhh'?'RRHH':S.role==='gerente'?'Gerente general':'Dueños'}
 function destNom(id){if(id==='emp:todos')return'Todos los empleados';if(id.startsWith('emp:'))return'Empleados · '+suc(id.slice(4)).nombre;if(id.startsWith('enc:'))return'Responsables · '+suc(id.slice(4)).nombre;return(AREAS.find(a=>a.id===id)||{nombre:id}).nombre}
-async function enviarMsg(para,texto,extra){const m={id:uid(),para,de:remitente(),deRole:S?S.role:'',...(S&&S.role==='enc'?{deSuc:S.suc}:{}),texto,ts:new Date().toISOString(),leido:false,...(extra||{})};await DB.set('msg:'+m.id,m);D.msg.unshift(m);return m}
+async function enviarMsg(para,texto,extra){const m={id:uid(),para,de:remitente(),deRole:S?S.role:'',...(S&&S.role==='enc'?{deSuc:S.suc}:{}),texto,ts:new Date().toISOString(),leido:false,auto:!(extra&&extra.manual),...(extra||{})};delete m.manual;await DB.set('msg:'+m.id,m);D.msg.unshift(m);return m}
+async function msgAvisoUnico(para,texto,clave){const v=D.msg.find(m=>m.clave===clave&&m.para===para&&!m.leido);if(v){const x={...v,texto,ts:new Date().toISOString()};await DB.set('msg:'+x.id,x);Object.assign(v,x);return v}return enviarMsg(para,texto,{clave})}
 const MSG_INBOX={compras:'compras',calidad:'calidad',mant:'mant',mkt:'marketing',stock:'stock',admin:'admin',rrhh:'rrhh',gerente:'gerente',dueno:'duenos'};
 function msgSucDe(m){if(m.deSuc)return m.deSuc;if(m.deRole!=='enc')return null;const x=CFG.sucursales.find(s=>(m.de||'').includes('('+s.nombre+' ·'));return x?x.id:null}
 function msgInboxDe(m){if(m.deRole==='enc'){const sid=msgSucDe(m);return sid?'enc:'+sid:null}return MSG_INBOX[m.deRole]||null}
@@ -1032,50 +1033,78 @@ function msgDestToggle(id,on){MSGT=($('#msg-txt')||{}).value??MSGT;MSGD=MSGD.fil
 function msgDestTodas(ids,on){MSGT=($('#msg-txt')||{}).value??MSGT;MSGD=MSGD.filter(x=>!ids.includes(x));if(on)MSGD.push(...ids);render()}
 /* clave de conversación. Los avisos de Mantenimiento ("resolvió…") quedan colgados del pedido que hizo la sucursal, así el responsable del otro turno ve todo el hilo */
 const MT_RES='Mantenimiento resolvió: ';
-function msgK(m){if(m.resp)return m.resp;if(m.deRole==='mant'&&String(m.texto||'').startsWith(MT_RES)&&String(m.para).startsWith('enc:')){const d=m.texto.slice(MT_RES.length).replace(/\.$/,''),sid=m.para.slice(4);const r=D.msg.find(x=>x.para==='mant'&&x.deRole==='enc'&&msgSucDe(x)===sid&&x.ts<m.ts&&String(x.texto).includes(': '+d+'. Antes del'));if(r)return r.id}return m.id}
+/* ---- conversaciones (como grupo de WhatsApp) y avisos del sistema ---- */
+const MSG_AUTO_RE=/^(📣|🪧|✏️|✅|❌|📦|⚠️|Calidad[: ]|Pedido N°|Retirá de la venta|Mantenimiento (cargó|agregó|pidió|vencido|urgente)|Marketing:|Marketing propone|Novedad de producto|Todavía no leyeron|Se canceló|Se anuló|El pedido N°|Compras (reabrió|cerró|anuló)|Vacaciones:|Anticipo de |Visita de calidad|Se cerró |Administración (pidió|devolvió|te entregó|aprobó)|Resumen del gerente|Conteo de vouchers|Llegó el pedido|Faltantes en pedido|Decomiso en|Tenés que cargar el plan|Evaluación de|RRHH (rechazó|aprobó)|Solicitud de anticipo|Se pusieron automáticamente|Se modificó una diferencia|Productos VENCIDOS|Novedades de |Diferencia de stock|Certificado médico|Limpieza profunda|El pádel reintegró|Falla reportada|Nueva tarea|Rutina de mantenimiento|Reclamo de cliente|Rendición de Calidad)|lleva \d+ días sin visita|no mandó el video del café|está suspendido|colocó "/;
+function msgAuto(m){if(m.auto===true)return true;if(m.auto===false||m.manual||m.grupo)return false;if(m.resp)return false;return MSG_AUTO_RE.test(String(m.texto||''))}
+let MSGIX=null,MSGIXN=-1;
+function msgIx(){if(MSGIXN!==D.msg.length||!MSGIX){MSGIX=new Map(D.msg.map(m=>[m.id,m]));MSGIXN=D.msg.length}return MSGIX}
+/* clave del hilo: los mensajes a varios destinos (grupo) y sus respuestas forman UNA conversación */
+function msgK(m){let k=m.resp||null;
+  if(!k&&m.deRole==='mant'&&String(m.texto||'').startsWith(MT_RES)&&String(m.para).startsWith('enc:')){const d=m.texto.slice(MT_RES.length).replace(/\.$/,''),sid=m.para.slice(4);const r=D.msg.find(x=>x.para==='mant'&&x.deRole==='enc'&&msgSucDe(x)===sid&&x.ts<m.ts&&String(x.texto).includes(': '+d+'. Antes del'));if(r)k=r.id}
+  if(!k)return m.grupo||m.id;
+  const b=msgIx().get(k);return b&&b.grupo?b.grupo:k}
+function msgParticipantes(L){const s=new Set();L.forEach(m=>{s.add(m.para);const i=msgInboxDe(m);if(i)s.add(i)});return[...s].filter(Boolean)}
+let MSGTAB='conv';
 function mensajesHTML(){
   const ids=inboxIds(),rec=m=>ids.includes(m.para);
   const mios=D.msg.filter(m=>rec(m)||msgEsMio(m));
   const hilos={};mios.forEach(m=>{const k=msgK(m);(hilos[k]=hilos[k]||[]).push(m)});
-  D.msg.forEach(m=>{const k=msgK(m);if(hilos[k]&&!hilos[k].includes(m))hilos[k].push(m)});
+  // se suman las otras copias del mismo envío (para mostrar "Para: A, B, C"), nunca respuestas privadas entre otros
+  const gs=new Set(mios.filter(m=>m.grupo&&!m.resp).map(m=>m.grupo)),rgs=new Set(mios.filter(m=>m.rg).map(m=>m.rg));
+  D.msg.forEach(m=>{const k=msgK(m);if(!hilos[k]||hilos[k].includes(m))return;if((m.grupo&&!m.resp&&gs.has(m.grupo))||(m.rg&&rgs.has(m.rg)))hilos[k].push(m)});
   let H=Object.values(hilos).map(L=>L.sort((x,y)=>x.ts===y.ts?(x.resp?1:0)-(y.resp?1:0):x.ts<y.ts?-1:1));
+  const esConv=L=>L.some(m=>!msgAuto(m));
+  const HC=H.filter(esConv),HA=H.filter(L=>!esConv(L));
+  const nlC=HC.reduce((t,L)=>t+L.filter(m=>rec(m)&&!m.leido).length,0),nlA=HA.reduce((t,L)=>t+L.filter(m=>rec(m)&&!m.leido).length,0);
+  let V0=MSGTAB==='avisos'?HA:HC;
   const q=MSGQ.trim().toLowerCase();
-  if(q)H=H.filter(L=>L.some(m=>(m.texto+' '+m.de+' '+destNom(m.para)).toLowerCase().includes(q)));
-  if(MSGV==='nuevos')H=H.filter(L=>L.some(m=>rec(m)&&!m.leido));
-  if(MSGV==='enviados')H=H.filter(L=>L.some(msgEsMio));
-  H.sort((x,y)=>x[x.length-1].ts<y[y.length-1].ts?1:-1);
-  const tot=H.length,V=H.slice(0,MSGN),nl=mios.filter(m=>rec(m)&&!m.leido).length;
+  if(q)V0=V0.filter(L=>L.some(m=>(m.texto+' '+m.de+' '+destNom(m.para)).toLowerCase().includes(q)));
+  if(MSGV==='nuevos')V0=V0.filter(L=>L.some(m=>rec(m)&&!m.leido));
+  if(MSGV==='enviados'&&MSGTAB!=='avisos')V0=V0.filter(L=>L.some(msgEsMio));
+  V0.sort((x,y)=>x[x.length-1].ts<y[y.length-1].ts?1:-1);
+  const tot=V0.length,V=V0.slice(0,MSGN);
   const opts=[...AREAS,...CFG.sucursales.map(s=>({id:'enc:'+s.id,nombre:'Responsables · '+s.nombre})),...msgEmpDest()].filter(a=>!ids.includes(a.id));
-  const item=m=>{const r=rec(m),mio=msgEsMio(m);return`<div style="padding:8px 10px;margin-top:6px;border-radius:8px;background:${mio?'var(--bg)':'transparent'};border:1px solid var(--line)"><div class="row"><b class="sm sp">${mio?'Enviado':'De: '+esc(m.de)} → ${esc(destNom(m.para))}</b>${r&&!m.leido?'<span class="pill p-bad">Nuevo</span>':''}</div><div class="sm" style="white-space:pre-line">${esc(m.texto)}</div>${m.foto?`<div class="fotos" style="margin-top:6px">${fotoThumbs([m.foto])}</div>`:''}<div class="xs mut">${fHora(m.ts)}${mio&&!r&&S.role==='enc'&&m.de?' · '+esc(m.de):''} · ${esc(msgLeidoTxt(m))}</div>${r&&!m.leido?`<button class="btn sm o" style="margin-top:4px" onclick="msgLeido('${m.id}')">Leído</button>`:''}</div>`};
-  const hilo=L=>{const raiz=L[0],ult=[...L].reverse().find(m=>!msgEsMio(m)&&msgInboxDe(m)&&!ids.includes(msgInboxDe(m))),dest=ult?msgInboxDe(ult):(msgEsMio(raiz)&&!ids.includes(raiz.para)?raiz.para:null);const k=msgK(raiz);
-    return`<div class="it" style="display:block">${L.length>1?`<div class="xs mut">Conversación · ${L.length} mensajes</div>`:''}${L.map(item).join('')}
-    ${dest?(MSGR===k?`<div style="margin-top:8px"><textarea class="in" id="msg-resp" placeholder="Escribí la respuesta para ${esc(destNom(dest))}"></textarea><div class="row" style="margin-top:6px"><span class="sp"></span><button class="btn o sm" onclick="MSGR=null;render()">Cancelar</button><button class="btn y sm" onclick="msgResponder('${k}','${dest}')">Enviar respuesta</button></div></div>`:`<button class="btn o sm" style="margin-top:6px" onclick="MSGR='${k}';render()">Responder</button>`):''}</div>`};
+  const corto=id=>destNom(id).replace('Responsables · ','');
+  // agrupa las copias de un mismo envío (mismo grupo o misma respuesta a todos) en una sola burbuja
+  const burbujas=L=>{const out=[],ix={};L.forEach(m=>{const g=m.grupo&&!m.resp?'g:'+m.grupo:m.rg?'r:'+m.rg:'m:'+m.id;if(ix[g]==null){ix[g]=out.length;out.push([])}out[ix[g]].push(m)});return out};
+  const item=B=>{const m=B[0],mio=B.some(msgEsMio),mias=B.filter(x=>rec(x)),nuevo=mias.some(x=>!x.leido);const para=[...new Set(B.map(x=>x.para))];
+    return`<div style="padding:8px 10px;margin-top:6px;border-radius:10px;background:${mio?'var(--bg)':'transparent'};border:1px solid var(--line);${mio?'margin-left:18px':'margin-right:18px'}"><div class="row"><b class="sm sp">${mio?'Vos':esc(m.de)}</b>${nuevo?'<span class="pill p-bad">Nuevo</span>':''}</div><div class="xs mut">Para: ${esc(para.map(corto).join(', '))}</div><div class="sm" style="white-space:pre-line;margin-top:3px">${esc(m.texto)}</div>${m.foto?`<div class="fotos" style="margin-top:6px">${fotoThumbs([m.foto])}</div>`:''}<div class="xs mut">${fHora(m.ts)}${mio&&S.role==='enc'&&m.de?' · '+esc(m.de):''}${B.length===1?' · '+esc(msgLeidoTxt(m)):''}</div>${nuevo?`<button class="btn sm o" style="margin-top:4px" onclick="msgLeidoVarios('${mias.map(x=>x.id).join(',')}')">Leído</button>`:''}</div>`};
+  const hilo=L=>{const k=msgK(L[0]);const part=msgParticipantes(L).filter(p=>!ids.includes(p));const otro=[...L].reverse().find(m=>!msgEsMio(m)&&msgInboxDe(m)&&!ids.includes(msgInboxDe(m)));const solo=otro?msgInboxDe(otro):(part.length===1?part[0]:null);
+    const B=burbujas(L);const conv=MSGTAB!=='avisos';
+    const titulo=part.length>1?`Conversación con ${part.length}: ${esc(part.map(corto).join(', '))}`:part.length?`Conversación con ${esc(corto(part[0]))}`:'';
+    const resp=!conv||!part.length?'':MSGR===k?`<div style="margin-top:8px"><textarea class="in" id="msg-resp" placeholder="Escribí la respuesta"></textarea><div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><span class="sp"></span><button class="btn o sm" onclick="MSGR=null;render()">Cancelar</button>${solo&&part.length>1?`<button class="btn o sm" onclick="msgResponder('${k}','${solo}')">Responder solo a ${esc(corto(solo))}</button>`:''}<button class="btn y sm" onclick="msgResponder('${k}','${part.length>1?'*':(solo||part[0])}')">${part.length>1?'Responder a todos ('+part.length+')':'Enviar respuesta'}</button></div></div>`:`<button class="btn o sm" style="margin-top:6px" onclick="MSGR='${k}';render()">Responder</button>`;
+    return`<div class="it" style="display:block">${conv&&titulo?`<div class="xs mut">${titulo}${B.length>1?' · '+B.length+' mensajes':''}</div>`:''}${B.map(item).join('')}${resp}</div>`};
   MSGD=MSGD.filter(id=>opts.some(a=>a.id===id));
   const oSuc=opts.filter(a=>a.id.startsWith('enc:')),oEmp=opts.filter(a=>a.id.startsWith('emp:')),oArea=opts.filter(a=>!a.id.startsWith('enc:')&&!a.id.startsWith('emp:'));
   const chip=a=>`<label class="sm" style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--line);border-radius:999px;background:${MSGD.includes(a.id)?'var(--yel)':'transparent'};cursor:pointer"><input type="checkbox" ${MSGD.includes(a.id)?'checked':''} onchange="msgDestToggle('${a.id}',this.checked)"> ${esc(a.nombre.replace('Responsables · ',''))}</label>`;
-  const todas=(L,t)=>{const ids=L.map(a=>a.id),all=ids.length&&ids.every(i=>MSGD.includes(i));return`<label class="sm b" style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--ink,#222);border-radius:999px;cursor:pointer"><input type="checkbox" ${all?'checked':''} onchange='msgDestTodas(${JSON.stringify(ids)},this.checked)'> ${t}</label>`};
+  const todas=(L,t)=>{const ids2=L.map(a=>a.id),all=ids2.length&&ids2.every(i=>MSGD.includes(i));return`<label class="sm b" style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--ink,#222);border-radius:999px;cursor:pointer"><input type="checkbox" ${all?'checked':''} onchange='msgDestTodas(${JSON.stringify(ids2)},this.checked)'> ${t}</label>`};
   return`<div class="card"><h3>Enviar mensaje</h3>
-  <div class="fld"><label class="f">Para (podés marcar varios)</label>
-   ${oSuc.length?`<div class="xs mut" style="margin:2px 0 4px">Responsables de sucursal</div><div style="display:flex;flex-wrap:wrap;gap:6px">${todas(oSuc,'Todas las sucursales')}${oSuc.map(chip).join('')}</div>`:''}
-   ${oArea.length?`<div class="xs mut" style="margin:10px 0 4px">Áreas</div><div style="display:flex;flex-wrap:wrap;gap:6px">${todas(oArea,'Todas las áreas')}${oArea.map(chip).join('')}</div>`:''}
+  <div class="fld"><label class="f">Para (podés marcar varios: arman una sola conversación y todos ven las respuestas)</label>
+   ${oArea.length?`<div class="xs mut" style="margin:2px 0 4px">Áreas</div><div style="display:flex;flex-wrap:wrap;gap:6px">${oArea.map(chip).join('')}</div>`:''}
+   ${oSuc.length?`<div class="xs mut" style="margin:10px 0 4px">Responsables de sucursal</div><div style="display:flex;flex-wrap:wrap;gap:6px">${todas(oSuc,'Todas las sucursales')}${oSuc.map(chip).join('')}</div>`:''}
    ${oEmp.length?`<div class="xs mut" style="margin:10px 0 4px">Empleados (mozos, café, horno y todos) · lo tienen que leer antes de confirmar el stock</div><div style="display:flex;flex-wrap:wrap;gap:6px">${oEmp.map(a=>chip({...a,nombre:a.nombre.replace('Empleados · ','')})).join('')}</div>`:''}
-   ${MSGD.length?`<div class="xs mut" style="margin-top:6px">Le llega a ${MSGD.length===1?'1 destino':MSGD.length+' destinos'}: ${esc(MSGD.map(id=>destNom(id).replace('Responsables · ','')).join(', '))}</div>`:''}</div>
+   <div class="al ${MSGD.length>3?'w':'i'}" style="margin-top:8px"><span>${MSGD.length?`<b>Le llega a ${MSGD.length===1?'1 destino':MSGD.length+' destinos'}:</b> ${esc(MSGD.map(corto).join(', '))}`:'Todavía no elegiste a quién mandarlo.'}</span></div></div>
   <div class="fld"><label class="f">Mensaje</label><textarea class="in" id="msg-txt" placeholder="Escribí el aviso o la consulta" oninput="MSGT=this.value">${esc(MSGT)}</textarea></div>
   <div class="row"><label class="upl">📷 Foto (opcional)<input type="file" accept="image/*" onchange="msgFoto(this)"></label><span class="sm mut">${MSGF.fotos.length?MSGF.fotos.length+' foto lista':''}</span><span class="sp"></span><button class="btn y" onclick="msgEnviar()">Enviar</button></div></div>
-  <div class="card"><div class="row" style="flex-wrap:wrap;gap:8px"><h3 class="sp" style="margin:0">${S.role==='enc'?'Mensajes de la sucursal':'Mensajes'}</h3>${nl?`<button class="btn o sm" onclick="msgTodosLeidos()">Marcar todos como leídos</button>`:''}</div>
-  ${S.role==='enc'?'<p class="xs mut" style="margin:4px 0 0">Acá ves lo que mandaron y recibieron todos los responsables de la sucursal, de todos los turnos.</p>':''}
-  <div class="seg" style="margin:10px 0">${[['todos','Todos'],['nuevos','Sin leer'+(nl?' ('+nl+')':'')],['enviados','Enviados']].map(([id,n])=>`<button class="${MSGV===id?'on':''}" onclick="MSGV='${id}';MSGN=15;render()">${n}</button>`).join('')}</div>
+  <div class="card"><div class="seg" style="margin-bottom:10px">${[['conv','💬 Conversaciones'+(nlC?' ('+nlC+')':'')],['avisos','🔔 Avisos del sistema'+(nlA?' ('+nlA+')':'')]].map(([id,n])=>`<button class="${MSGTAB===id?'on':''}" onclick="MSGTAB='${id}';MSGN=15;MSGR=null;render()">${n}</button>`).join('')}</div>
+  <div class="row" style="flex-wrap:wrap;gap:8px"><p class="xs mut sp" style="margin:0">${MSGTAB==='avisos'?'Avisos automáticos del sistema (pedidos, vencimientos, autorizaciones, novedades). No hace falta responderlos.':S.role==='enc'?'Lo que mandaron y recibieron los responsables de la sucursal, de todos los turnos.':'Mensajes escritos por personas. Si un mensaje fue para varios, todos ven las respuestas.'}</p>${(MSGTAB==='avisos'?nlA:nlC)?`<button class="btn o sm" onclick="msgTodosLeidos('${MSGTAB}')">Marcar todos como leídos</button>`:''}</div>
+  <div class="seg" style="margin:10px 0">${(MSGTAB==='avisos'?[['todos','Todos'],['nuevos','Sin leer']]:[['todos','Todos'],['nuevos','Sin leer'],['enviados','Enviados']]).map(([id,n])=>`<button class="${MSGV===id?'on':''}" onclick="MSGV='${id}';MSGN=15;render()">${n}</button>`).join('')}</div>
   <input class="in" id="msg-q" placeholder="Buscar en los mensajes" value="${esc(MSGQ)}" onchange="MSGQ=this.value;MSGN=15;render()">
-  ${V.length?V.map(hilo).join(''):'<div class="empty">No hay mensajes.</div>'}
-  ${tot>V.length?`<button class="btn o full" style="margin-top:10px" onclick="MSGN+=15;render()">Ver mensajes anteriores (${tot-V.length} más)</button>`:''}</div>`;
+  ${V.length?V.map(hilo).join(''):`<div class="empty">${MSGTAB==='avisos'?'No hay avisos.':'No hay conversaciones.'}</div>`}
+  ${tot>V.length?`<button class="btn o full" style="margin-top:10px" onclick="MSGN+=15;render()">Ver anteriores (${tot-V.length} más)</button>`:''}</div>`;
 }
 async function msgFoto(inp){if(!inp.files[0])return;MSGF.fotos=[await compress(inp.files[0])];render()}
 async function msgEnviar(){const txt=($('#msg-txt').value||'').trim();const dest=[...new Set(MSGD)];if(!dest.length)return toast('Marcá a quién le mandás el mensaje',true);if(!txt)return toast('Escribí el mensaje',true);
-  let ok=false;await safe(async()=>{let foto=null;if(MSGF.fotos[0])foto=await saveFoto(MSGF.fotos[0]);const grupo=dest.length>1?uid():null;for(const para of dest)await enviarMsg(para,txt,{...(foto?{foto}:{}),...(grupo?{grupo,nDest:dest.length}:{})});ok=true},dest.length>1?'Mensaje enviado a '+dest.length+' destinos':'Mensaje enviado');
+  const nSuc=dest.filter(d=>d.startsWith('enc:')||d.startsWith('emp:')).length;
+  if(dest.length>3&&nSuc&&!await mtConf('¿Mandarlo a todos estos?',`Le va a llegar a <b>${dest.length} destinos</b>: ${esc(dest.map(d=>destNom(d).replace('Responsables · ','')).join(', '))}.<br><br>Todos van a ver el mensaje y las respuestas. Incluye <b>${nSuc} ${nSuc===1?'sucursal':'sucursales'}</b>.`,'Sí, mandar'))return;
+  let ok=false;await safe(async()=>{let foto=null;if(MSGF.fotos[0])foto=await saveFoto(MSGF.fotos[0]);const grupo=dest.length>1?uid():null;for(const para of dest)await enviarMsg(para,txt,{manual:true,...(foto?{foto}:{}),...(grupo?{grupo,nDest:dest.length}:{})});ok=true},dest.length>1?'Mensaje enviado a '+dest.length+' destinos':'Mensaje enviado');
   if(ok){MSGF={fotos:[]};MSGD=[];MSGT=''}render()}
 async function msgResponder(k,dest){const txt=($('#msg-resp').value||'').trim();if(!txt)return toast('Escribí la respuesta',true);const ids=inboxIds();
-  await safe(async()=>{for(const m of D.msg.filter(m=>msgK(m)===k&&ids.includes(m.para)&&!m.leido)){msgMarcar(m);await DB.set('msg:'+m.id,m)}await enviarMsg(dest,txt,{resp:k})},'Respuesta enviada');MSGR=null;render()}
-async function msgTodosLeidos(){const L=misMensajes().filter(m=>!m.leido);await safe(async()=>{for(const m of L){msgMarcar(m);await DB.set('msg:'+m.id,m)}},'Listo');render()}
+  const L=D.msg.filter(m=>msgK(m)===k);const vis=L.filter(m=>ids.includes(m.para)||msgEsMio(m)||(m.grupo&&!m.resp));const dests=dest==='*'?msgParticipantes(vis).filter(p=>!ids.includes(p)):[dest];if(!dests.length)return toast('No hay a quién responder',true);
+  const rg=dests.length>1?uid():null;
+  await safe(async()=>{for(const m of L.filter(m=>ids.includes(m.para)&&!m.leido)){msgMarcar(m);await DB.set('msg:'+m.id,m)}for(const d of dests)await enviarMsg(d,txt,{resp:k,manual:true,...(rg?{rg}:{})})},dests.length>1?'Respuesta enviada a '+dests.length:'Respuesta enviada');MSGR=null;render()}
+async function msgLeidoVarios(idsTxt){const L=String(idsTxt).split(',').map(id=>D.msg.find(x=>x.id===id)).filter(m=>m&&!m.leido);await safe(async()=>{for(const m of L){msgMarcar(m);await DB.set('msg:'+m.id,m)}});render()}
+async function msgTodosLeidos(tabSel){const conv=m=>{const k=msgK(m);return D.msg.some(x=>msgK(x)===k&&!msgAuto(x))};const L=misMensajes().filter(m=>!m.leido&&(!tabSel||(tabSel==='avisos'?!conv(m):conv(m))));await safe(async()=>{for(const m of L){msgMarcar(m);await DB.set('msg:'+m.id,m)}},'Listo');render()}
 async function msgLeido(id){const m=D.msg.find(x=>x.id===id);msgMarcar(m);await safe(()=>DB.set('msg:'+id,m));render()}
 
 /* ===================================================================== CARTA (COMPRAS) Y MOZOS */
@@ -3670,7 +3699,7 @@ async function mkCampGuardar(){return unaVez('mkm',async()=>{const x=MKCF;if(!x.
   const cambio=!prev||(prev.estado&&prev.estado!=='aprobada')||mkCampClave(prev)!==mkCampClave(o);let pedir=false;
   if(cambio){if(S.role==='dueno'){o.estado='aprobada';o.resp={acc:'aprobada',por:'Dueños',nombre:S.nombre,txt:'',ts};o.hist=[...(o.hist||[]),{acc:'aprobada',por:'Dueños',ts}]}else{o.estado='pendiente';o.pedido=ts;o.hist=[...(o.hist||[]),{acc:'pedido',por:S.nombre,ts}];pedir=true}}
   try{await safe(async()=>{await DB.set('mkm:'+o.id,o);const i=D.mkm.findIndex(c=>c.id===o.id);if(i>=0)D.mkm[i]=o;else D.mkm.unshift(o);
-    if(pedir){const t=`📣 Marketing pide autorización: "${o.nombre}" · ${fFecha(o.desde)} al ${fFecha(o.hasta)} · ${mkDiasTxt(o)} · ${mkSucTxt(o.sucs)} · ${o.costo?'costo estimado '+money(o.costo):'sin costo'}. La ves arriba de todo en tu panel para aprobarla.`;for(const d of ['compras','rrhh','duenos'])await enviarMsg(d,t)}},pedir?'Enviada para autorizar':'Campaña guardada')}catch(e){return}
+    if(pedir){const t=`📣 Marketing pide autorización: "${o.nombre}" · ${fFecha(o.desde)} al ${fFecha(o.hasta)} · ${mkDiasTxt(o)} · ${mkSucTxt(o.sucs)} · ${o.costo?'costo estimado '+money(o.costo):'sin costo'}. La ves arriba de todo en tu panel para aprobarla.`;await msgAvisoUnico('duenos',t,'mkm:'+o.id)}},pedir?'Enviada para autorizar':'Campaña guardada')}catch(e){return}
   closeModal();MKCF=null;render()})}
 let MKAR=null;
 function mkAutHTML(){if(!S||!MK_AUT_ROLES.includes(S.role))return'';const L=mkAutPend();if(!L.length)return'';setTimeout(hydrateFotos,0);
@@ -3750,7 +3779,7 @@ async function mkPiezaGuardar(){return unaVez('mkp',async()=>{mkPiezaSync();cons
     const cambio=!prev||(prev.estado&&prev.estado!=='aprobada')||mkpClave(prev)!==mkpClave(o);
     if(cambio){if(S.role==='dueno'){o.estado='aprobada';o.resp={acc:'aprobada',por:'Dueños',nombre:S.nombre,txt:'',ts};o.hist=[...(o.hist||[]),{acc:'aprobada',por:'Dueños',ts}];avisar=true}else{o.estado='pendiente';o.pedido=ts;o.hist=[...(o.hist||[]),{acc:'pedido',por:S.nombre,ts}];pedir=true}}
     await DB.set('mkp:'+o.id,o);const i=D.mkp.findIndex(c=>c.id===o.id);if(i>=0)D.mkp[i]=o;else D.mkp.unshift(o);
-    if(pedir){const t=`🪧 Marketing pide autorización de cartelería: "${o.nombre}" · ${fFecha(o.desde)} al ${fFecha(o.hasta)} · ${mkSucTxt(o.sucs)} · ${o.costo?'costo '+money(o.costo):'sin costo'}. La ves arriba de todo en tu panel para aprobarla.`;for(const d of ['compras','rrhh','duenos'])await enviarMsg(d,t)}
+    if(pedir){const t=`🪧 Marketing pide autorización de cartelería: "${o.nombre}" · ${fFecha(o.desde)} al ${fFecha(o.hasta)} · ${mkSucTxt(o.sucs)} · ${o.costo?'costo '+money(o.costo):'sin costo'}. La ves arriba de todo en tu panel para aprobarla.`;await msgAvisoUnico('duenos',t,'mkp:'+o.id)}
     if(avisar)await mkpAvisarSucs(o)},pedir?'Enviada para autorizar':'Pieza guardada')}catch(e){return}
   closeModal();MKPF=null;render()})}
 const mkpConf=(p,sid)=>D.mkpc.find(c=>c.id===p.id+'|'+sid);
@@ -4907,7 +4936,7 @@ function dueFalta(m){const L=[];const fl=faltantes(m);if(fl.length)L.push({t:'Tu
   const rec=D.rec.filter(r=>r.estado!=='resuelto').length;if(rec)L.push({t:'Reclamos de clientes sin resolver',n:rec,d:'',r:'Calidad',para:'calidad'});
   return L}
 async function dueAvisar(i){const x=dueFalta(SEL.mes)[i];if(!x)return;const txt=`Los dueños piden ponerse al día: ${x.t} (${x.n}).${x.d?' '+x.d:''}`;if(!confirm(`¿Mandarle este mensaje a ${x.r}?\n\n${txt}`))return;
-  await safe(()=>enviarMsg(x.para,txt),'Mensaje enviado a '+x.r);render()}
+  await safe(()=>enviarMsg(x.para,txt,{manual:true}),'Mensaje enviado a '+x.r);render()}
 
 /* ---------- INICIO ---------- */
 function ownInicio(){const m=SEL.mes,R=metricas(m),Rp=metricas(mesPrev(m)),esAct=m===mesDe(hoy()),P=esAct?proyMes(m):null;
@@ -5911,5 +5940,5 @@ const TAB_INI={enc:'inicio',admin:'cierres',rrhh:'novedades',compras:'abast',cal
 })();
 </script>
 </body>
-<!-- version 2026-11-21b -->
+<!-- version 2026-11-26a -->
 </html>
